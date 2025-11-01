@@ -4,18 +4,18 @@ import numpy as np
 import os
 
 # -------------------------------------------------
-# AYARLAR
+# SETTINGS
 # -------------------------------------------------
-PICKLE_IN = "prepare_data.pkl"          # büyük orijinal pickle
-PICKLE_OUT = "prepare_data_demo.pkl"    # küçük/demo pickle
-USER_ID_DEMO = 108170                   # göstereceğim kullanıcı ID'si
-MIN_OVERLAP_RATIO = 0.60                # user-based için overlap eşiği
-TOP_REF_FILM_COUNT = 30                 # item-based için en benzer film sayısı
-TOP_CONTENT_FILM_COUNT = 100            # content-based için top benzer film sayısı
+PICKLE_IN = "prepare_data.pkl"          # large original pickle
+PICKLE_OUT = "prepare_data_demo.pkl"    # small/demo pickle
+USER_ID_DEMO = 108170                   # user ID to display
+MIN_OVERLAP_RATIO = 0.60                # overlap threshold for user-based
+TOP_REF_FILM_COUNT = 30                 # number of most similar films for item-based
+TOP_CONTENT_FILM_COUNT = 100            # number of top similar films for content-based
 
 
 # -------------------------------------------------
-# 1. ORİJİNAL VERİYİ YÜKLE
+# 1. LOAD ORIGINAL DATA
 # -------------------------------------------------
 with open(PICKLE_IN, "rb") as f:
     data = pickle.load(f)
@@ -28,20 +28,20 @@ user_movie_df_full = data["user_movie_df"].copy()
 cosine_sim_genre_full = data["cosine_sim_genre"].copy()
 
 # -------------------------------------------------
-# 2. DEMO KULLANICININ DÜNYASINI ÇIKAR
+# 2. EXTRACT DEMO USER'S WORLD
 # -------------------------------------------------
 if USER_ID_DEMO not in user_movie_df_full.index:
-    raise ValueError(f"Demo kullanıcısı {USER_ID_DEMO} user_movie_df'te yok.")
+    raise ValueError(f"Demo user {USER_ID_DEMO} not found in user_movie_df.")
 
 row = user_movie_df_full.loc[[USER_ID_DEMO]]
 watched_movies_titles = row.columns[row.notna().any()].to_list()
 num_watched = len(watched_movies_titles)
-print("Demo kullanıcı kaç film izlemiş:", num_watched)
+print("Demo user watched how many movies:", num_watched)
 
 demo_user_ratings = rating_full[rating_full["userId"] == USER_ID_DEMO].copy()
 
 # -------------------------------------------------
-# 3. USER-BASED: BENZER KULLANICILAR
+# 3. USER-BASED: SIMILAR USERS
 # -------------------------------------------------
 watched_df = user_movie_df_full[watched_movies_titles]
 user_movie_count = watched_df.T.notnull().sum().reset_index()
@@ -54,10 +54,10 @@ candidate_users = user_movie_count[
 ]["userId"].unique().tolist()
 
 keep_users_user_based = set(candidate_users + [USER_ID_DEMO])
-print("Aday kullanıcı sayısı:", len(candidate_users))
+print("Candidate user count:", len(candidate_users))
 
 # -------------------------------------------------
-# 4. ITEM-BASED: REFERANS FİLM VE BENZERLERİ
+# 4. ITEM-BASED: REFERENCE FILM AND SIMILAR ONES
 # -------------------------------------------------
 demo_5stars = demo_user_ratings[demo_user_ratings["rating"] == 5.0].copy()
 if not demo_5stars.empty:
@@ -84,11 +84,11 @@ else:
     ref_movie_title = None
     top_similar_titles = []
 
-print("Referans film:", ref_movie_title)
-print("Item-based top benzer film sayısı:", len(top_similar_titles))
+print("Reference film:", ref_movie_title)
+print("Item-based top similar film count:", len(top_similar_titles))
 
 # -------------------------------------------------
-# 5. CONTENT-BASED: TÜRLERE GÖRE BENZER FİLMLER
+# 5. CONTENT-BASED: SIMILAR FILMS BY GENRE
 # -------------------------------------------------
 keep_titles_initial = set(watched_movies_titles) | set(top_similar_titles)
 title_to_idx = {t: i for i, t in enumerate(movie_full['title'].tolist())}
@@ -103,10 +103,10 @@ for t in list(keep_titles_initial):
         for ni in top_neighbors_idx:
             expanded_titles.add(movie_full.iloc[ni]['title'])
 
-print("Film sayısı (expanded_titles):", len(expanded_titles))
+print("Film count (expanded_titles):", len(expanded_titles))
 
 # -------------------------------------------------
-# 6. FİLTRELEME
+# 6. FILTERING
 # -------------------------------------------------
 user_movie_df_small = user_movie_df_full.loc[
     user_movie_df_full.index.isin(keep_users_user_based),
@@ -132,7 +132,7 @@ common_movies_small = common_movies_full[
 ].copy()
 
 # -------------------------------------------------
-# 7. COSINE SIMILARITY MATRİSİNİ KÜÇÜLT
+# 7. REDUCE COSINE SIMILARITY MATRIX
 # -------------------------------------------------
 keep_idx = [title_to_idx[t] for t in movie_full['title'].tolist() if t in expanded_titles]
 cosine_sim_genre_small = cosine_sim_genre_full[np.ix_(keep_idx, keep_idx)]
@@ -143,10 +143,10 @@ missing_titles = [
     if c not in movie_small["title"].values
 ]
 if missing_titles:
-    print("UYARI: user_movie_df_small içinde movie_small'ta olmayan title var:", missing_titles)
+    print("WARNING: user_movie_df_small contains titles not in movie_small:", missing_titles)
 
 # -------------------------------------------------
-# 8. YENİ PICKLE KAYDET
+# 8. SAVE NEW PICKLE
 # -------------------------------------------------
 data_small = {
     "movie": movie_small,
@@ -160,31 +160,31 @@ data_small = {
 with open(PICKLE_OUT, "wb") as f:
     pickle.dump(data_small, f)
 
-print("✅ DONE. Küçültülmüş pickle kaydedildi:", PICKLE_OUT)
+print("✅ DONE. Reduced pickle saved:", PICKLE_OUT)
 
 """
-USER_ID_DEMO = 108170                   # göstereceğim kullanıcı ID'si
-MIN_OVERLAP_RATIO = 0.60                # user-based için overlap eşiği
-TOP_REF_FILM_COUNT = 30                 # item-based için en benzer film sayısı
-TOP_CONTENT_FILM_COUNT = 100            # content-based için top benzer film sayısı
+USER_ID_DEMO = 108170                   # user ID to display
+MIN_OVERLAP_RATIO = 0.60                # overlap threshold for user-based
+TOP_REF_FILM_COUNT = 30                 # number of most similar films for item-based
+TOP_CONTENT_FILM_COUNT = 100            # number of top similar films for content-based
 
-Demo kullanıcı kaç film izlemiş: 186
-Aday kullanıcı sayısı: 2325
-Referans film: Wild at Heart (1990)
-Item-based top benzer film sayısı: 30
-Film sayısı (expanded_titles): 7395
-
-"""
+Demo user watched how many movies: 186
+Candidate user count: 2325
+Reference film: Wild at Heart (1990)
+Item-based top similar film count: 30
+Film count (expanded_titles): 7395
 
 """
-USER_ID_DEMO = 108170                   # göstereceğim kullanıcı ID'si
-MIN_OVERLAP_RATIO = 0.20                # user-based için overlap eşiği
-TOP_REF_FILM_COUNT = 50                 # item-based için en benzer film sayısı
-TOP_CONTENT_FILM_COUNT = 200            # content-based için top benzer film sayısı
 
-Demo kullanıcı kaç film izlemiş: 186
-Aday kullanıcı sayısı: 30291
-Referans film: Wild at Heart (1990)
-Item-based top benzer film sayısı: 50
-Film sayısı (expanded_titles): 11042
+"""
+USER_ID_DEMO = 108170                   # user ID to display
+MIN_OVERLAP_RATIO = 0.20                # overlap threshold for user-based
+TOP_REF_FILM_COUNT = 50                 # number of most similar films for item-based
+TOP_CONTENT_FILM_COUNT = 200            # number of top similar films for content-based
+
+Demo user watched how many movies: 186
+Candidate user count: 30291
+Reference film: Wild at Heart (1990)
+Item-based top similar film count: 50
+Film count (expanded_titles): 11042
 """

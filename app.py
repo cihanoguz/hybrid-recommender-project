@@ -1,6 +1,5 @@
 # -------------------------------------------------
 # HYBRID RECOMMENDER STREAMLIT APP
-# Eğitim Sunumu için Optimize Edilmiş Versiyon
 # -------------------------------------------------
 
 import streamlit as st
@@ -8,16 +7,113 @@ import pandas as pd
 import numpy as np
 import pickle
 import os
+import base64
 
 # -------------------------------------------------
-# SAYFA AYARLARI (GENEL GÖRÜNÜM)
+# PATH / GLOBAL SETTINGS
 # -------------------------------------------------
+
+# Page config (call early)
 st.set_page_config(
     page_title="Hybrid Recommender Case Study",
     layout="wide"
 )
 
-# Basit ama okunabilir custom CSS
+# Project directory
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# Pickle file
+PICKLE_PATH = os.path.join(BASE_DIR, "data/prepare_data_demo.pkl")
+
+# Logo file (change name if needed)
+LOGO_PATH = os.path.join(BASE_DIR, "datahub_logo.jpeg")
+# example: LOGO_PATH = os.path.join(BASE_DIR, "datahub logo.jpeg")
+
+
+def img_to_base64(path):
+    with open(path, "rb") as f:
+        return base64.b64encode(f.read()).decode("utf-8")
+
+
+# Encode logo (silently fallback if logo doesn't exist)
+logo_b64 = None
+if os.path.exists(LOGO_PATH):
+    logo_b64 = img_to_base64(LOGO_PATH)
+
+
+# -------------------------------------------------
+# DATAHUB HEADER (top banner)
+# -------------------------------------------------
+def render_header():
+    # Make logo optional so it doesn't throw errors
+    if logo_b64:
+        logo_html = (
+            f"<img src='data:image/png;base64,{logo_b64}' "
+            "style=\"height:40px; border-radius:.5rem; "
+            "background:rgba(0,0,0,.15); padding:4px;"
+            "box-shadow:0 10px 20px rgba(0,0,0,0.4);\"/>"
+        )
+    else:
+        logo_html = (
+            "<div style=\"height:40px; width:40px; border-radius:.5rem; "
+            "background:rgba(0,0,0,.15); display:flex; align-items:center; "
+            "justify-content:center; font-size:.6rem; font-weight:600; "
+            "box-shadow:0 10px 20px rgba(0,0,0,0.4); color:white;\">DH</div>"
+        )
+
+    datahub_banner_html = (
+        "<div style=\""
+        "background: linear-gradient(90deg, rgba(37,99,235,1) 0%, rgba(16,185,129,1) 100%);"
+        "padding: .75rem 1rem;"
+        "border-radius: .5rem;"
+        "color: white;"
+        "font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Inter', Roboto, 'Segoe UI', sans-serif;"
+        "font-size: .9rem;"
+        "font-weight: 500;"
+        "display: flex;"
+        "align-items: center;"
+        "gap: .75rem;"
+        "margin-bottom: 1rem;"
+        "border: 1px solid rgba(255,255,255,0.3);"
+        "box-shadow: 0 20px 40px -10px rgba(0,0,0,0.4);"
+        "\">"
+
+        # logo
+        + logo_html +
+
+        # badge
+        "<div style=\""
+        "background: rgba(255,255,255,0.15);"
+        "border-radius: .5rem;"
+        "padding: .5rem .75rem;"
+        "font-size: .8rem;"
+        "font-weight: 600;"
+        "line-height: 1;"
+        "display: flex;"
+        "align-items: center;"
+        "\">"
+        "DataHub"
+        "</div>"
+
+        # description
+        "<div style=\"flex:1; font-size:.9rem; font-weight:500;\">"
+        "In the real world, hybrid approach combines these three ideas: "
+        "community taste (user-based), product similarity (item-based), "
+        "content similarity (content-based)."
+        "</div>"
+
+        "</div>"
+    )
+
+    st.markdown(datahub_banner_html, unsafe_allow_html=True)
+
+
+render_header()
+
+
+# -------------------------------------------------
+# GENERAL CSS
+# -------------------------------------------------
 st.markdown(
     """
     <style>
@@ -115,21 +211,10 @@ st.markdown(
     unsafe_allow_html=True
 )
 
+
 # -------------------------------------------------
-# VERİYİ YÜKLEME
+# LOAD DATA
 # -------------------------------------------------
-# Burada varsayıyoruz ki senin daha önce hazırladığın pickle dosyası
-# şu anahtarlarla döndürüyordu:
-# movie, rating, df_full, common_movies, user_movie_df, all_user_ids, cosine_sim_genre
-#
-# NOT: Bu pickle'ı küçültüp (subset) sınıf/demolar için optimize etmen
-# performansı ciddi iyileştirir. Bu, sonuçları mantıksal olarak bozmaz;
-# sadece işlem hacmini makul boyuta indirir.
-
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-PICKLE_PATH = os.path.join(BASE_DIR, "data/prepare_data_demo.pkl")
-
-
 @st.cache_resource(show_spinner=True)
 def load_data(pickle_path: str):
     with open(pickle_path, "rb") as f:
@@ -142,41 +227,21 @@ def load_data(pickle_path: str):
     user_movie_df = data["user_movie_df"]
     cosine_sim_genre = data["cosine_sim_genre"]
 
-    # Kullanıcı ID listesini matristen alıyoruz
+    # Get user ID list from matrix
     all_user_ids = user_movie_df.index.tolist()
 
     return movie, rating, df_full, common_movies, user_movie_df, all_user_ids, cosine_sim_genre
+
 
 movie, rating, df_full, common_movies, user_movie_df, all_user_ids, cosine_sim_genre = load_data(PICKLE_PATH)
 
 
 # -------------------------------------------------
-# PERFORMANS İÇİN ÖN-HESAPLAMA YAKLAŞIMI
+# USER-BASED PRE-COMPUTATION
 # -------------------------------------------------
-# Buradaki fikir şu:
-# - Ağır işi (benzer kullanıcıları bulma, korelasyonları hesaplama vb.)
-#   kullanıcı bazında tek defa yap.
-# - Slider parametreleri ile sadece filtrele/sırala gibi hafif işlemler yap.
-#
-# Bu, canlıda slider oynarken uygulamanın akıcı kalmasını sağlar.
-
-
-
-
 @st.cache_data(show_spinner=False)
 def precompute_for_user_userbased(chosen_user: int):
-    """
-    User-Based Recommendation için ağır hazırlık.
-
-    - movies_watched: hedef kullanıcının izlediği filmlerin listesi
-    - candidate_users_df: her başka kullanıcının bu filmlerden kaçını izlediği
-    - corr_df: hedef kullanıcı ile diğer kullanıcıların korelasyonları
-    - top_users_ratings: bu kullanıcıların (komşu adayların) hangi filmlere kaç puan verdiği
-
-    Bu fonksiyonun amacı finalize aşamasına düzgün veri sağlamak.
-    """
-
-    # Kullanıcı gerçekten var mı?
+    # Does user exist?
     if chosen_user not in user_movie_df.index:
         return {
             "status": "no_user",
@@ -186,7 +251,7 @@ def precompute_for_user_userbased(chosen_user: int):
             "top_users_ratings": pd.DataFrame(),
         }
 
-    # Hedef kullanıcının izlediği filmleri bul
+    # Movies watched by target user
     row = user_movie_df.loc[[chosen_user]]
     movies_watched = row.columns[row.notna().any()].to_list()
 
@@ -199,31 +264,23 @@ def precompute_for_user_userbased(chosen_user: int):
             "top_users_ratings": pd.DataFrame(),
         }
 
-    # Hedef kullanıcının izlediği filmler üzerinden alt matris:
-    # satır = userId, sütun = bu filmler
+    # Sub-matrix based on target user's watched movies
     movies_watched_df = user_movie_df[movies_watched].copy()
 
-    # 1) ORTAK İZLEME SAYISI (CRITICAL FIX)
-    # Her kullanıcı bu filmlerden kaçını izlemiş?
-    # Bu kez satır bazında sayıyoruz: axis=1
+    # How many of these movies each other user has watched
     user_movie_count_series = movies_watched_df.notnull().sum(axis=1)
 
     candidate_users_df = (
         user_movie_count_series
-        .reset_index()  # index -> userId geliyor
+        .reset_index()
         .rename(columns={"index": "userId", 0: "movie_count"})
     )
     candidate_users_df.columns = ["userId", "movie_count"]
 
-    # kendimizi çıkar
     candidate_users_df = candidate_users_df[candidate_users_df["userId"] != chosen_user].copy()
 
-    # 2) KORELASYON
-    # base_vector: hedef kullanıcının rating vektörü (tüm filmler üzerinden)
+    # Calculate correlation
     base_vector = user_movie_df.loc[chosen_user]
-
-    # movies_watched_df.T: film -> user
-    # corrwith(base_vector) user bazlı korelasyon döndürüyor (index=userId)
     corr_series = movies_watched_df.T.corrwith(base_vector).dropna()
 
     corr_df = (
@@ -232,8 +289,6 @@ def precompute_for_user_userbased(chosen_user: int):
         .rename(columns={"index": "userId", 0: "corr"})
     )
     corr_df.columns = ["userId", "corr"]
-
-    # kendimizi çıkaralım
     corr_df = corr_df[corr_df["userId"] != chosen_user].copy()
 
     if corr_df.empty:
@@ -245,10 +300,7 @@ def precompute_for_user_userbased(chosen_user: int):
             "top_users_ratings": pd.DataFrame(),
         }
 
-    # 3) KOMŞU ADAYLARIN RATINGLERİ
-    # komşu adayların puan verdiği bütün filmId'leri ve puanlarını çekiyoruz
-    # burada corr_df ile merge yaparak corr bilgisini kaybetmiyoruz
-    # (böylece 'corr' kolonunu sonradan da kullanabileceğiz)
+    # Ratings from candidate neighbors
     top_users_ratings = corr_df.merge(
         rating[["userId", "movieId", "rating"]],
         on="userId",
@@ -267,11 +319,10 @@ def precompute_for_user_userbased(chosen_user: int):
     return {
         "status": "ok",
         "movies_watched": movies_watched,
-        "candidate_users_df": candidate_users_df,  # userId, movie_count
-        "corr_df": corr_df,                        # userId, corr
-        "top_users_ratings": top_users_ratings,    # userId, movieId, rating, corr
+        "candidate_users_df": candidate_users_df,
+        "corr_df": corr_df,
+        "top_users_ratings": top_users_ratings,
     }
-
 
 
 def finalize_user_based_from_cache(
@@ -283,16 +334,6 @@ def finalize_user_based_from_cache(
     top_n: int,
     chosen_user: int
 ):
-    """
-    precompute çıktısını alır ve:
-    1. overlap filtresi
-    2. corr filtresi
-    3. max_neighbors
-    4. corr * rating ile ağırlıklandırma
-    5. kullanıcı zaten izlemişse atma
-    6. weighted_score_threshold ile süzme
-    """
-
     status = precomputed["status"]
     if status != "ok":
         return {
@@ -310,7 +351,6 @@ def finalize_user_based_from_cache(
     corr_df = precomputed["corr_df"].copy()
     top_users_ratings = precomputed["top_users_ratings"].copy()
 
-    # Savunma
     if len(movies_watched) == 0 or candidate_users_df.empty or corr_df.empty or top_users_ratings.empty:
         return {
             "status": "not_enough_data",
@@ -322,8 +362,7 @@ def finalize_user_based_from_cache(
             "dbg_neighbor_ratings": pd.DataFrame(),
         }
 
-    # 1. overlap filtresi
-    # Örn: min_overlap_ratio_pct = 20 ise → "benim izlediklerimin en az %20'sini izlemiş ol"
+    # 1. overlap filter
     threshold_common = len(movies_watched) * (min_overlap_ratio_pct / 100.0)
 
     good_overlap_users = candidate_users_df[
@@ -347,7 +386,7 @@ def finalize_user_based_from_cache(
             "dbg_neighbor_ratings": pd.DataFrame(),
         }
 
-    # 2. korelasyon filtresi
+    # 2. correlation filter
     corr_filtered = corr_df[
         (corr_df["userId"].isin(good_overlap_users)) &
         (corr_df["corr"] >= corr_threshold)
@@ -370,7 +409,7 @@ def finalize_user_based_from_cache(
             "dbg_neighbor_ratings": pd.DataFrame(),
         }
 
-    # 3. max_neighbors uygula
+    # 3. max_neighbors limit
     corr_filtered = (
         corr_filtered
         .sort_values("corr", ascending=False)
@@ -395,7 +434,7 @@ def finalize_user_based_from_cache(
             "dbg_neighbor_ratings": pd.DataFrame(),
         }
 
-    # 4. seçilen komşuların film ratinglerini al ve corr ile birleştir
+    # 4. get neighbor movie ratings
     neighbor_ratings = top_users_ratings.merge(
         corr_filtered[["userId", "corr"]],
         on="userId",
@@ -419,7 +458,7 @@ def finalize_user_based_from_cache(
             "dbg_neighbor_ratings": neighbor_ratings,
         }
 
-    # 5. ağırlıklı puan = rating * corr (kolon adı her zaman aynı olmayabiliyor)
+    # 5. weighting = rating * corr
     possible_corr_cols = [c for c in neighbor_ratings.columns if "corr" in c]
     if not possible_corr_cols:
         return {
@@ -434,7 +473,7 @@ def finalize_user_based_from_cache(
 
     corr_col = possible_corr_cols[0]
     neighbor_ratings["weighted_rating"] = (
-            neighbor_ratings["rating"] * neighbor_ratings[corr_col]
+        neighbor_ratings["rating"] * neighbor_ratings[corr_col]
     )
 
     recommendation_df = (
@@ -444,18 +483,18 @@ def finalize_user_based_from_cache(
         .reset_index()
     )
 
-    # Hedef kullanıcının zaten izlediklerini çıkar
+    # Remove movies user has already watched
     seen_ids = rating.loc[rating["userId"] == chosen_user, "movieId"].unique().tolist()
     recommendation_df = recommendation_df[
         ~recommendation_df["movieId"].isin(seen_ids)
     ]
 
-    # weighted score threshold uygula
+    # apply weighted score threshold
     recommendation_df = recommendation_df[
         recommendation_df["weighted_rating"] >= weighted_score_threshold
     ]
 
-    # sırala + top_n
+    # sort + top_n
     recommendation_df = (
         recommendation_df
         .sort_values("weighted_rating", ascending=False)
@@ -463,7 +502,7 @@ def finalize_user_based_from_cache(
         .copy()
     )
 
-    # film isimleri
+    # add movie names
     recommendation_df = recommendation_df.merge(
         movie[["movieId", "title"]],
         on="movieId",
@@ -471,7 +510,7 @@ def finalize_user_based_from_cache(
     )
 
     out_df = recommendation_df[["title", "weighted_rating"]].rename(
-        columns={"title": "Film", "weighted_rating": "Skor"}
+        columns={"title": "Film", "weighted_rating": "Score"}
     )
 
     debug_info = {
@@ -493,15 +532,12 @@ def finalize_user_based_from_cache(
     }
 
 
+# -------------------------------------------------
+# ITEM-BASED
+# -------------------------------------------------
 @st.cache_data(show_spinner=False)
 def precompute_for_user_itembased(chosen_user: int):
-    """
-    Item-Based Recommendation için ağır kısım.
-    Kullanıcının en son 5★ verdiği filmi bul
-    ve o filme benzer filmlerin korelasyon skorlarını hesapla.
-    """
-
-    # Bu kullanıcının 5 verdiği filmler
+    # Movies user gave 5 stars to
     user_5 = rating[
         (rating["userId"] == chosen_user) &
         (rating["rating"] == 5.0)
@@ -514,7 +550,7 @@ def precompute_for_user_itembased(chosen_user: int):
             "similarity_df": pd.DataFrame()
         }
 
-    # en son verdiği 5★
+    # most recently given 5★
     if "timestamp" in user_5.columns:
         last_fav = user_5.sort_values("timestamp", ascending=False).iloc[0]
     else:
@@ -522,7 +558,6 @@ def precompute_for_user_itembased(chosen_user: int):
 
     ref_movie_id = last_fav["movieId"]
     ref_title_arr = movie.loc[movie["movieId"] == ref_movie_id, "title"].values
-
     if len(ref_title_arr) == 0:
         return {
             "status": "no_title",
@@ -532,7 +567,7 @@ def precompute_for_user_itembased(chosen_user: int):
 
     ref_title = ref_title_arr[0]
 
-    # user_movie_df'in kolonları film adları olduğu varsayımıyla ilerliyoruz.
+    # item-based correlation: between movies
     if ref_title not in user_movie_df.columns:
         return {
             "status": "not_in_matrix",
@@ -541,15 +576,13 @@ def precompute_for_user_itembased(chosen_user: int):
         }
 
     ref_vector = user_movie_df[ref_title]
-    sims = user_movie_df.corrwith(ref_vector).dropna()  # film-film benzerliği
-
-    # kendisini çıkar
-    sims = sims[sims.index != ref_title]
+    sims = user_movie_df.corrwith(ref_vector).dropna()  # movie-movie similarity
+    sims = sims[sims.index != ref_title]  # remove itself
 
     similarity_df = (
         sims.sort_values(ascending=False)
-            .reset_index()
-            .rename(columns={"index": "Benzer Film", 0: "Benzerlik"})
+        .reset_index()
+        .rename(columns={"index": "Similar Film", 0: "Similarity"})
     )
 
     return {
@@ -560,9 +593,6 @@ def precompute_for_user_itembased(chosen_user: int):
 
 
 def finalize_item_based_from_cache(precomputed_item, top_n_item: int):
-    """
-    Item-based sonuçlarını hafifçe kesip döner.
-    """
     status = precomputed_item["status"]
     if status != "ok":
         return status, None, pd.DataFrame()
@@ -575,13 +605,12 @@ def finalize_item_based_from_cache(precomputed_item, top_n_item: int):
     return "ok", ref_movie, sim_df_head
 
 
+# -------------------------------------------------
+# CONTENT-BASED
+# -------------------------------------------------
 @st.cache_data(show_spinner=False)
 def content_based_recommender_cached(movie_title: str, top_n: int):
-    """
-    Tür benzerliğine göre içerik tabanlı öneri (Bonus Görev 3).
-    cosine_sim_genre matrisini kullanıyoruz.
-    """
-    # Film var mı?
+    # Does film exist?
     if movie_title not in movie['title'].values:
         return {
             "status": "not_found",
@@ -590,25 +619,25 @@ def content_based_recommender_cached(movie_title: str, top_n: int):
             "recommendations": pd.DataFrame()
         }
 
-    # Film indeksini bul
+    # Find movie index
     movie_idx = movie[movie['title'] == movie_title].index[0]
 
-    # Referans filmin türlerini al
+    # Genre information
     ref_genres = movie.iloc[movie_idx]['genres']
 
-    # Tüm filmlerle cosine similarity skorlarını al
+    # Get Cosine similarity scores
     sim_scores = list(enumerate(cosine_sim_genre[movie_idx]))
 
-    # Skora göre sırala, kendisini at
+    # Sort by score, exclude itself
     sim_scores = sorted(sim_scores, key=lambda x: x[1], reverse=True)[1: top_n + 1]
 
-    # İlgili film indeksleri
+    # Related movie indices
     movie_indices = [i[0] for i in sim_scores]
 
-    # Sonuç dataframe
+    # Result DF
     result_df = movie.iloc[movie_indices][['title', 'genres']].copy()
-    result_df['Benzerlik Skoru'] = [round(i[1], 3) for i in sim_scores]
-    result_df = result_df.rename(columns={'title': 'Film', 'genres': 'Türler'})
+    result_df['Similarity Score'] = [round(i[1], 3) for i in sim_scores]
+    result_df = result_df.rename(columns={'title': 'Film', 'genres': 'Genres'})
 
     return {
         "status": "ok",
@@ -619,39 +648,39 @@ def content_based_recommender_cached(movie_title: str, top_n: int):
 
 
 # -------------------------------------------------
-# YARDIMCI FONKSİYONLAR (METRİKLER İÇİN)
+# HELPER FUNCTION
 # -------------------------------------------------
 def get_matrix_shape(df):
-    return df.shape  # (n_users, n_movies)
+    return df.shape
 
 
 # -------------------------------------------------
 # TABS
 # -------------------------------------------------
 tab_problem, tab_dataset, tab_tasks = st.tabs([
-    "1. İş Problemi",
-    "2. Veri Seti Hikayesi",
-    "3. Proje Görevleri"
+    "1. Business Problem",
+    "2. Dataset Story",
+    "3. Project Tasks"
 ])
 
 # -------------------------------------------------
-# TAB 1: İŞ PROBLEMİ
+# TAB 1
 # -------------------------------------------------
 with tab_problem:
     st.title("Case Study: Hybrid Recommender Project")
-    st.header("İş Problemi")
+    st.header("Business Problem")
 
     st.info(
-        "💡 Gerçek Dünya Senaryosu: 'ID'si verilen kullanıcı için user-based ve item-based tavsiye yöntemlerini kullanarak film öner.' "
-        "Bu problem MovieLens verisi üzerinden tanımlandı. :contentReference[oaicite:0]{index=0}"
+        "💡 Scenario: 'Recommend films for a given user ID using user-based and item-based recommendation methods.' "
+        "This problem was defined using MovieLens data."
     )
 
     st.write(
         """
-        Amaç:
-        1. Kullanıcıya benzeyen kullanıcıların sevdiği filmleri öner (User-Based).
-        2. Kullanıcının en son 5⭐ verdiği filme benzeyen filmleri öner (Item-Based).
-        3. BONUS: Seçilen bir filmin türsel benzerliğine göre benzer filmleri bul (Content-Based).
+        Objectives:
+        1. Recommend films liked by users similar to the target user (User-Based).
+        2. Recommend films similar to the film the user last rated 5⭐ (Item-Based).
+        3. BONUS: Find similar films based on genre similarity of a selected film (Content-Based).
         """
     )
 
@@ -659,37 +688,37 @@ with tab_problem:
 
     with col1:
         st.markdown("""
-        ### 🧑‍🤝‍🧑 User-Based (Benim Gibi Kullanıcılar)
-        - Benimle benzer zevkte kullanıcıları bul
-        - Onların sevdiği ama benim izlemediğim filmleri getir
-        - Ağırlıklı skora göre sırala
+        ### 🧑‍🤝‍🧑 User-Based
+        - Find users with similar taste to me
+        - Bring films they liked but I haven't watched
+        - Sort by weighted score
         """)
 
     with col2:
         st.markdown("""
-        ### 🎬 Item-Based (Bu Filme Benzeyenler)
-        - En son 5⭐ verdiğim filmi bul
-        - Bu filme benzeyen filmleri korelasyonla hesapla
-        - En benzerleri sırala
+        ### 🎬 Item-Based
+        - Find the film I last rated 5⭐
+        - Calculate similar films using correlation
+        - Sort the most similar ones
         """)
 
     with col3:
         st.markdown("""
-        ### 🏷️ Content-Based (Benzer Türde Filmler)
-        - Bir film seç
-        - Tür bilgisine bak
-        - Cosine similarity ile aynı tatta filmleri getir
+        ### 🏷️ Content-Based
+        - Select a film
+        - Check genre information
+        - Bring films in the same tone using cosine similarity
         """)
 
     st.success(
-        "🎯 Hibrit Bakış: Gerçek hayatta bu üç yaklaşım birlikte kullanılarak güçlü bir öneri motoru kurulur."
+        "These three approaches are usually combined into one package in real life. This is what we call a hybrid system."
     )
 
 # -------------------------------------------------
-# TAB 2: VERİ SETİ HİKAYESİ
+# TAB 2
 # -------------------------------------------------
 with tab_dataset:
-    st.title("Veri Seti Hikayesi")
+    st.title("Dataset Story")
 
     total_users_full = df_full["userId"].nunique()
     total_movies_full = df_full["movieId"].nunique()
@@ -705,7 +734,7 @@ with tab_dataset:
     with c1:
         st.markdown(
             f"<div class='metric-card'>"
-            f"<div class='metric-title'>Toplam Kullanıcı (ham)</div>"
+            f"<div class='metric-title'>Total Users (raw)</div>"
             f"<div class='metric-value'>{total_users_full:,}</div>"
             f"</div>",
             unsafe_allow_html=True
@@ -713,7 +742,7 @@ with tab_dataset:
     with c2:
         st.markdown(
             f"<div class='metric-card'>"
-            f"<div class='metric-title'>Toplam Film (ham)</div>"
+            f"<div class='metric-title'>Total Movies (raw)</div>"
             f"<div class='metric-value'>{total_movies_full:,}</div>"
             f"</div>",
             unsafe_allow_html=True
@@ -721,26 +750,26 @@ with tab_dataset:
     with c3:
         st.markdown(
             f"<div class='metric-card'>"
-            f"<div class='metric-title'>Toplam Rating (ham)</div>"
+            f"<div class='metric-title'>Total Ratings (raw)</div>"
             f"<div class='metric-value'>{total_ratings_full:,}</div>"
             f"</div>",
             unsafe_allow_html=True
         )
 
     st.write(
-        "Bu veri seti MovieLens tarafından sağlandı. Yaklaşık on binlerce film ve milyonlarca değerlendirme içeriyor. "
-        "Her kullanıcı en az 20 filme oy vermiş durumda; zaman aralığı 1995-2015. :contentReference[oaicite:1]{index=1}"
+        "This dataset is provided by MovieLens. It contains tens of thousands of films and millions of ratings. "
+        "Each user has rated at least 20 films; time range is 1995-2015."
     )
 
-    st.subheader("Değişkenler")
+    st.subheader("Variables")
 
     st.markdown("**movie.csv**")
     st.markdown(
         """
         <div class='header-badge-wrap'>
-            <div class='header-badge'>3 Değişken</div>
-            <div class='header-badge'>~27K Gözlem</div>
-            <div class='header-badge'>Film bilgileri</div>
+            <div class='header-badge'>3 Variables</div>
+            <div class='header-badge'>~27K Observations</div>
+            <div class='header-badge'>Movie information</div>
         </div>
         """,
         unsafe_allow_html=True
@@ -748,9 +777,9 @@ with tab_dataset:
     st.markdown(
         """
         <table class="var-table">
-        <tr><th>movieId</th><td>Eşsiz film numarası.</td></tr>
-        <tr><th>title</th><td>Film adı.</td></tr>
-        <tr><th>genres</th><td>Tür bilgisi (Action|Comedy|Drama ...)</td></tr>
+        <tr><th>movieId</th><td>Unique movie number.</td></tr>
+        <tr><th>title</th><td>Movie title.</td></tr>
+        <tr><th>genres</th><td>Genre information (Action|Comedy|Drama ...)</td></tr>
         </table>
         """,
         unsafe_allow_html=True
@@ -760,9 +789,9 @@ with tab_dataset:
     st.markdown(
         """
         <div class='header-badge-wrap'>
-            <div class='header-badge'>4 Değişken</div>
-            <div class='header-badge'>~20M Gözlem</div>
-            <div class='header-badge'>Kullanıcı puanları</div>
+            <div class='header-badge'>4 Variables</div>
+            <div class='header-badge'>~20M Observations</div>
+            <div class='header-badge'>User ratings</div>
         </div>
         """,
         unsafe_allow_html=True
@@ -770,27 +799,26 @@ with tab_dataset:
     st.markdown(
         """
         <table class="var-table">
-        <tr><th>userId</th><td>Kullanıcı ID'si (benzersiz)</td></tr>
-        <tr><th>movieId</th><td>Film ID'si</td></tr>
-        <tr><th>rating</th><td>Verilen puan</td></tr>
-        <tr><th>timestamp</th><td>Verildiği zaman</td></tr>
+        <tr><th>userId</th><td>User ID (unique)</td></tr>
+        <tr><th>movieId</th><td>Movie ID</td></tr>
+        <tr><th>rating</th><td>Given rating</td></tr>
+        <tr><th>timestamp</th><td>Time when rated</td></tr>
         </table>
         """,
         unsafe_allow_html=True
     )
 
-    st.subheader("Veri Hazırlama Adımları")
+    st.subheader("Data Preparation Steps")
 
     st.markdown(
         """
-        MovieLens verisini doğrudan kullanamayız çünkü çok büyük.  
-        Bu yüzden üç aşamalı bir yol izliyoruz:
+        MovieLens data is very large as-is. Therefore, we performed layered reduction:
 
-        1. Tüm evren (orijinal, ~20M rating / ~138K user / ~27K film)  
-        2. Popüler filmler filtresi (az oy alan filmleri at)  
-        3. Eğitim demosu için küçültülmüş snapshot (2.3K user seviyesine kadar daralt)
+        1. Full universe (original, ~20M ratings / ~138K users / ~27K movies)  
+        2. Popular movies filter (remove movies with very few ratings)  
+        3. Snapshot: subset universe keeping a specific user's network and most meaningful interactions (~2.3K users)
 
-        Aşağıdaki tablo iki dünyayı yan yana gösteriyor:
+        The table below compares the two worlds:
         """
     )
 
@@ -798,51 +826,51 @@ with tab_dataset:
         f"""
         <table class="stage-table">
         <tr>
-            <th>Aşama</th>
-            <th>Açıklama</th>
-            <th>Rating Satırı</th>
-            <th>Film Sayısı</th>
-            <th>Kullanıcı Sayısı</th>
+            <th>Stage</th>
+            <th>Description</th>
+            <th>Rating Rows</th>
+            <th>Movie Count</th>
+            <th>User Count</th>
         </tr>
 
         <tr>
-            <td>Ham Veri (MovieLens Orijinal)</td>
-            <td>movie.merge(rating)<br/>1995-2015 arası oylar<br/>Her kullanıcı ≥20 film oylamış</td>
+            <td>Raw Data (MovieLens Original)</td>
+            <td>movie.merge(rating)<br/>Ratings between 1995-2015<br/>Each user rated ≥20 movies</td>
             <td>{20_000_263:,}+</td>
             <td>~27,000</td>
             <td>~138,000</td>
         </tr>
 
         <tr>
-            <td>Popüler Filmlerle Süzülmüş (Orijinal Mantık)</td>
-            <td>1000'in altında oy alan filmleri çıkar<br/>Seyrek / gürültülü filmler elendi</td>
+            <td>Filtered by Popular Movies</td>
+            <td>Remove movies with less than 1000 ratings</td>
             <td>{17_766_015:,}</td>
-            <td>~3,000 civarı aktif film</td>
+            <td>~3,000 active movies</td>
             <td>~138,000</td>
         </tr>
 
         <tr>
-            <td>Demo Full (Streamlit'te kullandığımız çekirdek)</td>
-            <td>Örnek kullanıcı etrafındaki etkileşimleri tutan snapshot</td>
+            <td>Demo Full (snapshot)</td>
+            <td>Interactions around example user</td>
             <td>{1_793_782:,}</td>
             <td>{6_818:,}</td>
             <td>{2_326:,}</td>
         </tr>
 
         <tr>
-            <td>Demo Popüler Filmler (common_movies)</td>
-            <td>Yine 1000 altı oy alan filmler atıldı</td>
+            <td>Demo Popular Movies (common_movies)</td>
+            <td>Removed movies with less than 1000 ratings</td>
             <td>{1_572_589:,}</td>
             <td>{1_986:,}</td>
             <td>{2_326:,}</td>
         </tr>
 
         <tr>
-            <td>Demo Kullanıcı-Film Matrisi (user_movie_df)</td>
-            <td>pivot: kullanıcı x film (rating matrisi)</td>
-            <td>{2_326:,} satır x {1_982:,} sütun</td>
-            <td>{1_982:,} aktif film</td>
-            <td>{2_326:,} aktif kullanıcı</td>
+            <td>Demo User-Movie Matrix (user_movie_df)</td>
+            <td>pivot: user x movie (rating matrix)</td>
+            <td>{2_326:,} rows x {1_982:,} columns</td>
+            <td>{1_982:,} active movies</td>
+            <td>{2_326:,} active users</td>
         </tr>
         </table>
         """,
@@ -850,197 +878,222 @@ with tab_dataset:
     )
 
     st.info(
-        "💡 Az oylanan filmleri atmak, sistemi hızlandırır ve daha güvenilir benzerlik hesapları yapmamızı sağlar. "
-        "Bu da canlı demo sırasında istediğimiz parametrelerle rahat oynamamıza izin veriyor."
+        "Removing movies with few ratings both speeds up calculations and makes similarity measurements more reliable."
     )
 
 # -------------------------------------------------
-# TAB 3: PROJE GÖREVLERİ (CANLI DEMO)
+# TAB 3 (LIVE DEMO)
 # -------------------------------------------------
 with tab_tasks:
-    st.title("Proje Görevleri ve Canlı Öneri Motoru")
+    st.title("Project Tasks and Live Recommendation Engine")
 
-    st.subheader("Görevlerin İş Mantığı")
+    st.subheader("Approaches")
     st.markdown("""
-    Bu case çalışmasında 3 yaklaşım gösteriyoruz:
+    **User-Based**  
+    Find users similar to me, bring films they liked but I haven't watched.  
+    Correlation (corr) = taste similarity. Weighted Score = corr * average rating.
 
-    **Görev 1: User-Based (Benim Gibi Kullanıcılar)**  
-    - Hedef kullanıcının izlediği filmlere benzer zevke sahip diğer kullanıcıları buluyoruz.  
-    - Bu benzer kullanıcıların sevdiği ama hedef kullanıcının izlemediği filmleri öneriyoruz.  
-    - Korelasyon (corr) puanını 'zevk benzerliği' olarak kullanıyoruz.  
-    - Weighted Score = (benzerlik * rating) ortalaması. Bu bize en mantıklı önerileri veriyor. :contentReference[oaicite:3]{index=3}
+    **Item-Based**  
+    Base on the film the user last rated 5⭐.  
+    Find other films most similar to that film (movie-movie correlation).
 
-    **Görev 2: Item-Based (Bu Filme Benzeyenler)**  
-    - Hedef kullanıcının en son 5⭐ verdiği filmi buluyoruz.  
-    - Bu filmle korelasyon açısından en çok benzerlik gösteren filmleri buluyoruz.  
-    - Yani 'Bu filmi sevenler şunları da sevdi' mantığı. :contentReference[oaicite:4]{index=4}
-
-    **Bonus Görev 3: Content-Based (Benzer Türde Filmler)**  
-    - Kullanıcı davranışına bakmıyoruz.  
-    - Sadece filmlerin içerik özelliklerine (özellikle genres / tür bilgisi) bakıyoruz.  
-    - Tür vektörleri arasında cosine similarity (kosinüs benzerliği) hesaplıyoruz.  
-    - Sonuç: 'Bu filmin tür DNA'sına en çok benzeyen diğer filmler.'  
+    **Content-Based**  
+    Only look at content. Calculate cosine similarity between genre vectors.  
+    'What other films are closest to this film's genre DNA?'
     """)
 
     st.info(
-        "Gerçek dünyada hibrit yaklaşım bu üç fikri birleştirir: "
-        "topluluk zevki (user-based), ürün benzerliği (item-based), içerik benzerliği (content-based)."
+        """
+        Hybrid system: if the same film is recommended by multiple signals
+        (user-based + item-based + content-based),
+        we consider that film more reliable.
+        """
     )
 
-    # ---------------------------------
-    # SOL KOLON: PARAMETRELER / KONTROLLER
-    # ---------------------------------
+    # LEFT and RIGHT columns
     left_col, right_col = st.columns([1, 2])
 
     with left_col:
-        st.markdown("### Parametreler / Kontrol Paneli")
+        st.markdown("### Parameters / Control Panel")
 
         chosen_user = st.number_input(
-            "Hedef Kullanıcı ID",
+            "Target User ID",
             min_value=1,
             value=108170,
             step=1,
-            help="Case boyunca gösterdiğimiz örnek kullanıcı ID'si."
+            help="User ID to analyze"
         )
 
         rec_type = st.radio(
-            "Hangi yöntemi deneyelim?",
+            "Which method should we run?",
             [
-                "User-Based (Benim Gibi Kullanıcılar)",
-                "Item-Based (Bu Filme Benzeyenler)",
-                "Content-Based (Benzer Türde Filmler)"
+                "User-Based (Users Like Me)",
+                "Item-Based (Similar to This Film)",
+                "Content-Based (Similar Genre Films)",
+                "Hybrid (Combine All)"
             ],
-            help=(
-                "User-Based: 'Benim gibi kullanıcılar ne izliyor?'\n"
-                "Item-Based: 'Bu filmi sevdiysen şunları da seversin.'\n"
-                "Content-Based: 'Bu filmin tür DNA'sına benzeyen filmler.'"
-            ),
             key="rec_type_radio"
         )
 
         st.markdown("---")
 
-        # Her yaklaşımın kendi parametreleri
+        # Parameter blocks
         if rec_type.startswith("User-Based"):
-            st.markdown("#### 🧑‍🤝‍🧑 User-Based Parametreleri")
+            st.markdown("#### 🧑‍🤝‍🧑 User-Based Parameters")
 
             min_overlap_ratio_pct = st.slider(
-                "Ortak izleme yüzdesi (%)",
+                "Common viewing percentage (%)",
                 min_value=0,
                 max_value=100,
                 value=60,
                 step=5,
-                help="Benim izlediğim filmlerin en az %60'ını izlemiş kullanıcıları 'benzer' kabul et."
+                help="Consider users who watched at least 60% of the films I watched as 'similar'."
             )
 
             corr_threshold = st.slider(
-                "Korelasyon (zevk benzerliği) eşiği",
+                "Correlation threshold (taste similarity)",
                 min_value=0.0,
                 max_value=1.0,
                 value=0.65,
                 step=0.05,
-                help="0.65 ve üzeri: gerçekten bana benziyor."
+                help="0.65 and above: really similar to me."
             )
 
             max_neighbors = st.slider(
-                "Maksimum komşu sayısı",
+                "Maximum neighbor count",
                 min_value=1,
                 max_value=200,
                 value=7,
                 step=1,
-                help="En fazla kaç benzer kullanıcı kullanalım?"
+                help="How many similar users should we use?"
             )
 
             weighted_score_threshold = st.slider(
-                "Weighted skor eşiği",
+                "Weighted score threshold",
                 min_value=0.0,
                 max_value=5.0,
                 value=3.5,
                 step=0.1,
-                help="(corr * rating) ortalaması 3.5 üstüyse öner."
+                help="Recommend if (corr * rating) average is above 3.5."
             )
 
             top_n_user_based = st.slider(
-                "Kaç film önerilsin? (Top-N)",
+                "How many films to recommend? (Top-N)",
                 min_value=1,
                 max_value=10,
                 value=5,
                 step=1,
-                help="İlk kaç filmi listeleyelim?"
+                help="How many films to list?"
             )
 
-            # varsayılan diğerlerinin parametreleri
+            # default others
             top_n_item_based = 5
-            selected_movie_title = None
             top_n_content = 5
+            hybrid_top_n = 5
+            selected_movie_title = None
 
         elif rec_type.startswith("Item-Based"):
-            st.markdown("#### 🎬 Item-Based Parametreleri")
+            st.markdown("#### 🎬 Item-Based Parameters")
 
             top_n_item_based = st.slider(
-                "Kaç benzer film gösterilsin?",
+                "How many similar films to show?",
                 min_value=1,
                 max_value=20,
                 value=5,
                 step=1,
-                help="Referans filme (kullanıcının en son 5⭐ verdiği film) en çok benzeyen ilk N filmi göster."
+                help="Show the top N most similar films for the film the user last rated 5⭐."
             )
 
-            # varsayılanlar
+            # default others
             min_overlap_ratio_pct = 60
             corr_threshold = 0.65
             max_neighbors = 7
             weighted_score_threshold = 3.5
             top_n_user_based = 5
-
-            selected_movie_title = None
             top_n_content = 5
+            hybrid_top_n = 5
+            selected_movie_title = None
 
-        else:
-            st.markdown("#### 🏷️ Content-Based Parametreleri")
+        elif rec_type.startswith("Content-Based"):
+            st.markdown("#### 🏷️ Content-Based Parameters")
 
-            # Çok büyük liste streaming sırasında ağır gelebilir,
-            # istersen burada movie listesini popüler/top-rated 500 film ile daraltabilirsin.
-            movie_titles_sorted = sorted(movie['title'].tolist())
+            # quick search box
+            search_term = st.text_input(
+                "Search / type film (for autocomplete):",
+                value="",
+                help="Type first few letters. The box below will filter accordingly."
+            )
+
+            # filtered film list
+            if search_term.strip():
+                filtered_titles = sorted(
+                    [t for t in movie['title'].tolist() if search_term.lower() in t.lower()]
+                )
+            else:
+                filtered_titles = sorted(movie['title'].tolist())
 
             selected_movie_title = st.selectbox(
-                "Referans Film Seçin",
-                options=movie_titles_sorted,
-                help="Bu filme tür olarak en çok benzeyen filmleri bulacağız."
+                "Select Reference Film",
+                options=filtered_titles,
+                help="We will find films most similar to this film by genre."
             )
 
             top_n_content = st.slider(
-                "Kaç benzer film gösterilsin?",
+                "How many similar films to show?",
                 min_value=1,
                 max_value=20,
                 value=5,
-                step=1,
-                help="En benzer ilk N filmi göster."
+                step=1
             )
 
-            # varsayılanlar
+            # default others
+            min_overlap_ratio_pct = 60
+            corr_threshold = 0.65
+            max_neighbors = 7
+            weighted_score_threshold = 3.5
+            top_n_user_based = 5
+            top_n_item_based = 5
+            hybrid_top_n = 5
+
+        else:  # Hybrid
+            st.markdown("#### 🔀 Hybrid Parameters")
+
+            # User-Based defaults
             min_overlap_ratio_pct = 60
             corr_threshold = 0.65
             max_neighbors = 7
             weighted_score_threshold = 3.5
             top_n_user_based = 5
 
+            # Item-Based defaults
             top_n_item_based = 5
 
-        run_button = st.button("🎬 Önerileri Hesapla", type="primary")
+            # Content-Based defaults
+            top_n_content = 5
+            selected_movie_title = None
 
-    # ---------------------------------
-    # SAĞ KOLON: SONUÇLAR
-    # ---------------------------------
+            hybrid_top_n = st.slider(
+                "How many films should Hybrid show in total?",
+                min_value=3,
+                max_value=15,
+                value=5,
+                step=1,
+                help="List the top N films from common/strong candidates of all three approaches."
+            )
+
+        run_button = st.button("🎬 Calculate Recommendations", type="primary")
+
+    # RIGHT PANEL - RESULT
     with right_col:
-        st.markdown("### Çözüm Çıktısı")
+        st.markdown("### Solution Output")
 
         if not run_button:
-            st.info("👈 Parametreleri seç ve '🎬 Önerileri Hesapla' butonuna bas.")
+            st.info("Select parameters and press the button.")
         else:
             # USER-BASED
+            # USER-BASED
             if rec_type.startswith("User-Based"):
-                with st.spinner("User-Based hesaplanıyor..."):
+                with st.spinner("Calculating User-Based..."):
                     pre_u = precompute_for_user_userbased(chosen_user)
                     result_user = finalize_user_based_from_cache(
                         precomputed=pre_u,
@@ -1052,173 +1105,386 @@ with tab_tasks:
                         chosen_user=chosen_user
                     )
 
-                    status = result_user["status"]
-                    debug_info = result_user.get("debug_info", {})
+                status = result_user["status"]
+                debug_info = result_user.get("debug_info", {})
+                recs_df = result_user["recommendations"]
 
-                    if status != "ok":
-                        st.warning(f"⚠️ User-Based öneri üretilemedi. Durum: {status}")
+                # prepare debug dataframes locally (so they're always defined)
+                cand_df = result_user.get("dbg_candidate_users_df", pd.DataFrame())
+                corr_df_dbg = result_user.get("dbg_corr_df", pd.DataFrame())
+                corr_filtered_dbg = result_user.get("dbg_corr_filtered", pd.DataFrame())
+                neigh_dbg = result_user.get("dbg_neighbor_ratings", pd.DataFrame())
 
-                        # DEBUG GÖSTER: neden yok?
-                        with st.expander("🔎 Debug: Ara Aşamalar (neden öneri yok?)"):
-                            st.write("Aday kullanıcılar (candidate_users_df):")
-                            st.dataframe(result_user.get("dbg_candidate_users_df", pd.DataFrame()).head(20))
+                # --- status check ---
+                if status != "ok":
+                    st.warning(f"User-Based recommendations could not be generated. Status: {status}")
 
-                            st.write("Korelasyon tablosu (corr_df):")
-                            st.dataframe(result_user.get("dbg_corr_df", pd.DataFrame()).head(20))
+                    # even if status is not ok, you can see debug to explain technically
+                    with st.expander("🔎 Debug / Intermediate Steps (detailed calculation steps)"):
+                        st.write("• candidate_users_df = 'Everyone who watched common films with target user'")
+                        st.write("Shape:", cand_df.shape)
+                        st.dataframe(cand_df.head(20))
 
-                            st.write("Filtre sonrası komşular (corr_filtered):")
-                            st.dataframe(result_user.get("dbg_corr_filtered", pd.DataFrame()).head(20))
+                        st.write("• corr_df = 'Each candidate user's correlation with target user (taste similarity)'")
+                        st.write("Shape:", corr_df_dbg.shape)
+                        st.dataframe(corr_df_dbg.head(20))
 
-                            st.write("Komşu puanları (neighbor_ratings):")
-                            st.dataframe(result_user.get("dbg_neighbor_ratings", pd.DataFrame()).head(20))
+                        st.write("• corr_filtered = 'Both sufficient common film count AND corr above threshold'")
+                        st.write("Shape:", corr_filtered_dbg.shape)
+                        st.dataframe(corr_filtered_dbg.head(20))
+
+                        st.write("• neighbor_ratings = 'Which films these similar users rated how much'")
+                        st.write("Shape:", neigh_dbg.shape)
+                        st.dataframe(neigh_dbg.head(20))
+
+                else:
+                    # give separate message if no recommendations
+                    if recs_df.empty:
+                        st.info("No recommendations found matching the parameters.")
+
+                        # even if no recommendations, we can explain 'why not' by showing debug
+                        with st.expander("🔎 Debug / Intermediate Steps (detailed calculation steps)"):
+                            st.write("• candidate_users_df = 'Everyone who watched common films with target user'")
+                            st.write("Shape:", cand_df.shape)
+                            st.dataframe(cand_df.head(20))
+
+                            st.write(
+                                "• corr_df = 'Each candidate user's correlation with target user (taste similarity)'")
+                            st.write("Shape:", corr_df_dbg.shape)
+                            st.dataframe(corr_df_dbg.head(20))
+
+                            st.write("• corr_filtered = 'Both sufficient common film count AND corr above threshold'")
+                            st.write("Shape:", corr_filtered_dbg.shape)
+                            st.dataframe(corr_filtered_dbg.head(20))
+
+                            st.write("• neighbor_ratings = 'Which films these similar users rated how much'")
+                            st.write("Shape:", neigh_dbg.shape)
+                            st.dataframe(neigh_dbg.head(20))
 
                     else:
-                        recs_df = result_user["recommendations"]
+                        # SUCCESS STATUS
+                        st.success("User-Based recommendations ready.")
 
-                        if recs_df.empty:
-                            st.info("Parametrelerle eşleşen öneri bulunamadı.")
-                        else:
-                            st.success("✅ User-Based önerileriniz hazır!")
+                        # short explanation card
+                        st.markdown(
+                            """
+                            <div class='metric-card'>
+                                <div class='metric-title'>💬 Comment</div>
+                                <div class='metric-value'>
+                                    This list was calculated as follows:<br/>
+                                    1) We found users with very similar movie history to this user.<br/>
+                                    2) We took films that these similar users rated highly.<br/>
+                                    3) We excluded films the user has already watched.<br/>
+                                    4) We recommended those with high weighted score (corr × rating average).
+                                </div>
+                            </div>
+                            """,
+                            unsafe_allow_html=True
+                        )
 
-                            st.markdown(
-                                f"<div class='metric-card'>"
-                                f"<div class='metric-title'>💬 Yorum</div>"
-                                f"<div class='metric-value'>"
-                                f"Benzer zevke sahip kullanıcıların sevdiği, benim henüz izlemediğim filmler."
-                                f"</div>"
-                                f"</div>",
-                                unsafe_allow_html=True
+                        # metrics (how many neighbors we used, etc.)
+                        col_a, col_b, col_c, col_d = st.columns(4)
+
+                        with col_a:
+                            st.metric(
+                                label="Movies Watched Count",
+                                value=debug_info.get("movies_watched", "?"),
+                                help="Number of films the target user rated (example: 186)."
                             )
 
-                            # Debug metrikler
-                            with st.expander("🔍 Hesaplama Detayları (Debug / Görev Mantığı)"):
-                                col_a, col_b, col_c, col_d = st.columns(4)
-                                with col_a:
-                                    st.metric("İzlenen Film", debug_info.get("movies_watched", "?"))
-                                with col_b:
-                                    st.metric("Aday Kullanıcı", debug_info.get("candidate_users", "?"))
-                                with col_c:
-                                    st.metric("Overlap+Corr Sonrası", debug_info.get("after_corr_users", "?"))
-                                with col_d:
-                                    st.metric("Kullanılan Komşu", debug_info.get("used_neighbors", "?"))
-
-                            st.markdown(f"**📊 Toplam {len(recs_df)} öneri bulundu.**")
-                            st.dataframe(
-                                recs_df.head(20).reset_index(drop=True),
-                                use_container_width=True
+                        with col_b:
+                            st.metric(
+                                label="Initial Candidate Pool",
+                                value=debug_info.get("candidate_users", "?"),
+                                help="Number of users sharing at least one common film with this user. Raw initial pool."
                             )
 
-                        # Ayrıca başarılı durumda bile (öneri varsa bile) ara aşamaları göstermek isteyebilirsin:
-                        with st.expander("🔎 Debug: Ara Aşamalar"):
-                            st.write("Aday kullanıcılar (candidate_users_df):")
-                            st.dataframe(result_user.get("dbg_candidate_users_df", pd.DataFrame()).head(20))
+                        with col_c:
+                            st.metric(
+                                label="Similar Users (Overlap+Corr)",
+                                value=debug_info.get("after_corr_users", "?"),
+                                help="Number of users who passed both common viewing percentage threshold and correlation threshold. (top_users)"
+                            )
 
-                            st.write("Korelasyon tablosu (corr_df):")
-                            st.dataframe(result_user.get("dbg_corr_df", pd.DataFrame()).head(20))
+                        with col_d:
+                            st.metric(
+                                label="Neighbors Included in Score",
+                                value=debug_info.get("used_neighbors", "?"),
+                                help="Number of most similar neighbors used when calculating recommendation score."
+                            )
 
-                            st.write("Filtre sonrası komşular (corr_filtered):")
-                            st.dataframe(result_user.get("dbg_corr_filtered", pd.DataFrame()).head(20))
+                        # RESULT TABLE (final recommendations)
+                        st.markdown("#### 🎬 User-Based Recommendations")
+                        st.dataframe(
+                            recs_df.reset_index(drop=True),
+                            use_container_width=True
+                        )
 
-                            st.write("Komşu puanları (neighbor_ratings):")
-                            st.dataframe(result_user.get("dbg_neighbor_ratings", pd.DataFrame()).head(20))
+                        # DEBUG EXPANDER (presentation mode 💅)
+                        with st.expander("🔎 Debug / Intermediate Steps (detailed calculation steps)"):
+                            st.write("STAGE 1 · candidate_users_df")
+                            st.caption(
+                                "How many of the films watched by target user did other users also watch? movie_count shows this.")
+                            st.write("Shape:", cand_df.shape)
+                            st.dataframe(cand_df.head(20))
+
+                            st.write("STAGE 2 · corr_df")
+                            st.caption(
+                                "Correlation between target user and other users (taste similarity). corr = 1 → same taste, 0 → no relationship.")
+                            st.write("Shape:", corr_df_dbg.shape)
+                            st.dataframe(corr_df_dbg.head(20))
+
+                            st.write("STAGE 3 · corr_filtered (neighbors)")
+                            st.caption(
+                                "Users who watched sufficient common films AND exceeded corr threshold. So really 'like me'.")
+                            st.write("Shape:", corr_filtered_dbg.shape)
+                            st.dataframe(corr_filtered_dbg.head(20))
+
+                            st.write("STAGE 4 · neighbor_ratings")
+                            st.caption("Which films these neighbors rated how much, and weighted score = corr × rating.")
+                            st.write("Shape:", neigh_dbg.shape)
+                            st.dataframe(neigh_dbg.head(20))
 
 
             # ITEM-BASED
             elif rec_type.startswith("Item-Based"):
-                with st.spinner("Item-Based hesaplanıyor..."):
+                with st.spinner("Calculating Item-Based..."):
                     pre_i = precompute_for_user_itembased(chosen_user)
-                    status, ref_movie, sim_df = finalize_item_based_from_cache(
+                    status_i, ref_movie, sim_df = finalize_item_based_from_cache(
                         pre_i,
                         top_n_item_based
                     )
 
-                if status != "ok":
-                    if status == "no_five_star":
-                        st.warning("⚠️ Bu kullanıcı hiç 5 puan vermemiş.")
-                    elif status == "not_in_matrix":
+                if status_i != "ok":
+                    if status_i == "no_five_star":
+                        st.warning("This user has never given 5 stars.")
+                    elif status_i == "not_in_matrix":
                         st.warning(
-                            f"⚠️ Referans film kullanıcı-film matrisinde yok: {pre_i['reference_movie']}"
+                            f"Reference film not in user-movie matrix: {pre_i['reference_movie']}"
                         )
                     else:
-                        st.warning(f"⚠️ Item-Based öneri üretilemedi. Durum: {status}")
+                        st.warning(f"Item-Based recommendations could not be generated. Status: {status_i}")
                 else:
-                    st.success("✅ Item-Based önerileriniz hazır!")
+                    st.success("Item-Based recommendations ready.")
 
                     st.markdown(
                         f"<div class='metric-card'>"
-                        f"<div class='metric-title'>🎯 Referans Film (Kullanıcının en son 5⭐ verdiği)</div>"
+                        f"<div class='metric-title'>Reference Film (user's last 5⭐ rating)</div>"
                         f"<div class='metric-value'>{ref_movie}</div>"
                         f"</div>",
                         unsafe_allow_html=True
                     )
 
                     st.markdown(
-                        "Bu yaklaşım 'Bu filmi sevenler bunları da sevdi' mantığında çalışır. "
-                        "Filmler arasındaki benzerliği kullanıcıların oy davranışına göre ölçer."
+                        "This approach works with the logic 'Those who liked this film also liked these'. "
+                        "It measures similarity between films based on users' rating behavior."
                     )
 
-                    st.markdown(f"**📊 Toplam {len(sim_df)} benzer film bulundu.**")
+                    st.markdown(f"Total {len(sim_df)} similar films found.")
                     st.dataframe(
                         sim_df.head(top_n_item_based).reset_index(drop=True),
                         use_container_width=True
                     )
 
             # CONTENT-BASED
-            else:
-                with st.spinner("Content-Based hesaplanıyor..."):
+            elif rec_type.startswith("Content-Based"):
+                with st.spinner("Calculating Content-Based..."):
                     cb_result = content_based_recommender_cached(
                         movie_title=selected_movie_title,
                         top_n=top_n_content
                     )
 
-                status = cb_result["status"]
+                status_c = cb_result["status"]
 
-                if status != "ok":
-                    st.warning(f"⚠️ Film bulunamadı: {selected_movie_title}")
+                if status_c != "ok":
+                    st.warning(f"Film not found: {selected_movie_title}")
                 else:
-                    ref_movie = cb_result["reference_movie"]
-                    ref_genres = cb_result["reference_genres"]
-                    rec_df = cb_result["recommendations"]
+                    ref_movie_cb = cb_result["reference_movie"]
+                    ref_genres_cb = cb_result["reference_genres"]
+                    rec_df_cb = cb_result["recommendations"]
 
-                    st.success("✅ Content-Based önerileriniz hazır!")
+                    st.success("Content-Based recommendations ready.")
 
                     st.markdown(
                         f"<div class='metric-card'>"
-                        f"<div class='metric-title'>🎯 Referans Film</div>"
-                        f"<div class='metric-value'>{ref_movie}</div>"
-                        f"<div class='metric-title'>Türler: {ref_genres}</div>"
+                        f"<div class='metric-title'>Reference Film</div>"
+                        f"<div class='metric-value'>{ref_movie_cb}</div>"
+                        f"<div class='metric-title'>Genres: {ref_genres_cb}</div>"
                         f"</div>",
                         unsafe_allow_html=True
                     )
 
-                    with st.expander("💡 Bonus Görev 3: Content-Based Nasıl Çalışıyor?"):
+                    with st.expander("How does Content-Based work?"):
                         st.info(
                             f"""
-                            Bu yöntem kullanıcı davranışına değil, içeriğin kendisine bakar.
+                            This method looks at the content itself, not user behavior.
 
-                            1️⃣ Referans filmin türlerini aldık: `{ref_genres}`  
-                            2️⃣ Her filmi tür (genre) vektörü olarak temsil ediyoruz  
-                            3️⃣ Cosine Similarity ile 'bu film hangi filmlere tür olarak en yakın?' sorusunu soruyoruz  
-                            4️⃣ En yüksek benzerliğe sahip {top_n_content} filmi getiriyoruz
+                            1) We took the genres of the reference film: `{ref_genres_cb}`
+                            2) We represent each film as a genre vector
+                            3) We ask 'which films are most similar to this film by genre?' using Cosine Similarity
+                            4) We bring the {top_n_content} films with highest similarity
 
-                            Güçlü yön: Yeni kullanıcıda bile çalışır (cold start daha küçük).  
-                            Zayıf yön: Benzer tat çevresinde dönebilir (filter bubble).
+                            Plus side: Works even in cold start (new user problem is smaller).
+                            Minus side: Can return similar tastes all the time (filter bubble).
                             """
                         )
 
-                    st.markdown(f"**📊 Toplam {len(rec_df)} benzer film bulundu.**")
+                    st.markdown(f"Total {len(rec_df_cb)} similar films found.")
                     st.dataframe(
-                        rec_df.head(top_n_content).reset_index(drop=True),
+                        rec_df_cb.head(top_n_content).reset_index(drop=True),
                         use_container_width=True
                     )
+
+            # HYBRID
+            else:
+                with st.spinner("Calculating Hybrid..."):
+
+                    # USER-BASED tarafı
+                    pre_u = precompute_for_user_userbased(chosen_user)
+                    result_user = finalize_user_based_from_cache(
+                        precomputed=pre_u,
+                        min_overlap_ratio_pct=min_overlap_ratio_pct,
+                        corr_threshold=corr_threshold,
+                        max_neighbors=max_neighbors,
+                        weighted_score_threshold=weighted_score_threshold,
+                        top_n=top_n_user_based,
+                        chosen_user=chosen_user
+                    )
+                    if result_user["status"] == "ok" and not result_user["recommendations"].empty:
+                        df_user_part = result_user["recommendations"].copy()
+                        df_user_part["Source"] = "User-Based"
+                        df_user_part = df_user_part.rename(
+                            columns={"Film": "Film_Name", "Score": "Model_Score"}
+                        )
+                    else:
+                        df_user_part = pd.DataFrame(columns=["Film_Name", "Model_Score", "Source"])
+
+                    # ITEM-BASED side
+                    pre_i = precompute_for_user_itembased(chosen_user)
+                    status_i, ref_movie_i, sim_df_i = finalize_item_based_from_cache(
+                        pre_i,
+                        top_n_item_based
+                    )
+                    if status_i == "ok" and sim_df_i is not None and not sim_df_i.empty:
+                        df_item_part = sim_df_i.copy()
+                        df_item_part["Source"] = "Item-Based"
+                        df_item_part = df_item_part.rename(
+                            columns={"Similar Film": "Film_Name", "Similarity": "Model_Score"}
+                        )
+                    else:
+                        df_item_part = pd.DataFrame(columns=["Film_Name", "Model_Score", "Source"])
+
+                    # CONTENT-BASED side
+                    if status_i == "ok" and ref_movie_i is not None:
+                        cb_result = content_based_recommender_cached(
+                            movie_title=ref_movie_i,
+                            top_n=top_n_content
+                        )
+                        if cb_result["status"] == "ok" and not cb_result["recommendations"].empty:
+                            df_cb_part = cb_result["recommendations"].copy()
+                            df_cb_part["Source"] = "Content-Based"
+                            df_cb_part = df_cb_part.rename(
+                                columns={"Film": "Film_Name", "Similarity Score": "Model_Score"}
+                            )
+                            df_cb_part = df_cb_part[["Film_Name", "Model_Score", "Source"]]
+                        else:
+                            df_cb_part = pd.DataFrame(columns=["Film_Name", "Model_Score", "Source"])
+                    else:
+                        df_cb_part = pd.DataFrame(columns=["Film_Name", "Model_Score", "Source"])
+
+                    combined_all = pd.concat(
+                        [df_user_part, df_item_part, df_cb_part],
+                        ignore_index=True
+                    )
+
+                if combined_all.empty:
+                    st.warning("Hybrid system could not generate recommendations (insufficient signals).")
+                else:
+                    st.markdown(
+                        f"<div class='metric-card'>"
+                        f"<div class='metric-title'>Hybrid Logic</div>"
+                        f"<div class='metric-value'>"
+                        f"If a film is recommended by multiple models (User / Item / Content), "
+                        f"we consider that film more reliable. "
+                        f"'Source_Count' shows this."
+                        f"</div>"
+                        f"</div>",
+                        unsafe_allow_html=True
+                    )
+
+                    hybrid_summary = (
+                        combined_all
+                        .groupby("Film_Name")
+                        .agg(
+                            Source_Count=("Source", "nunique"),
+                            Average_Score=("Model_Score", "mean")
+                        )
+                        .reset_index()
+                    )
+
+                    # confidence metric
+                    hybrid_summary["Hybrid_Confidence"] = (
+                        hybrid_summary["Source_Count"] * hybrid_summary["Average_Score"]
+                    )
+
+                    hybrid_summary = hybrid_summary.sort_values(
+                        by=["Hybrid_Confidence", "Source_Count", "Average_Score"],
+                        ascending=False
+                    ).head(hybrid_top_n)
+
+                    st.success("Hybrid (Common Candidates from All Models)")
+
+                    st.dataframe(
+                        hybrid_summary.reset_index(drop=True),
+                        use_container_width=True
+                    )
+
+                    # Show sub-sources
+                    with st.expander("User-Based details"):
+                        if df_user_part.empty:
+                            st.write("No User-Based results.")
+                        else:
+                            st.dataframe(df_user_part.reset_index(drop=True),
+                                         use_container_width=True)
+
+                    with st.expander("Item-Based details"):
+                        if df_item_part.empty:
+                            st.write("No Item-Based results.")
+                        else:
+                            st.dataframe(df_item_part.reset_index(drop=True),
+                                         use_container_width=True)
+
+                    with st.expander("Content-Based details"):
+                        if df_cb_part.empty:
+                            st.write("No Content-Based results.")
+                        else:
+                            st.dataframe(df_cb_part.reset_index(drop=True),
+                                         use_container_width=True)
+
+                    # also write reference film
+                    if status_i == "ok" and ref_movie_i is not None:
+                        st.info(
+                            f"Film the user last rated 5⭐: {ref_movie_i} "
+                            f"→ Item-Based looked for similarity around this, "
+                            f"Content-Based also looked at this film's genre DNA."
+                        )
+                    else:
+                        st.info(
+                            "Reference film that user rated 5⭐ could not be found. "
+                            "Therefore, Content-Based signal may be missing."
+                        )
+
 
 # -------------------------------------------------
 # FOOTER
 # -------------------------------------------------
 st.markdown("---")
-st.markdown("""
-<div style='text-align: center; color: #6b7280; font-size: 0.85rem;'>
-    <p>🎓 MIUUL DSMLBC19 Bootcamp - Hybrid Recommender System Case Study</p>
-    <p>💡 Parametrelerle oynayarak önerilerin nasıl değiştiğini canlı göster ve her yöntemin mantığını tartıştır.</p>
-</div>
-""", unsafe_allow_html=True)
+st.markdown(
+    """
+    <div style='text-align: center; color: #6b7280; font-size: 0.85rem;'>
+        <p>DataHub · Hybrid Recommender System</p>
+        <p>You can see how the recommendation logic changes as you play with the parameters.</p>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
