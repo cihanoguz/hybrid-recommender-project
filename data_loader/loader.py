@@ -14,25 +14,21 @@ import streamlit as st
 
 from logging_config import get_logger
 
+logger = get_logger(__name__)
+
 try:
     from security_utils import sanitize_file_path, validate_pickle_file_integrity
 
     SECURITY_UTILS_AVAILABLE = True
 except ImportError:
     SECURITY_UTILS_AVAILABLE = False
-    import logging
-
     logger.warning("security_utils not available, skipping advanced security checks")
 
 try:
     from utils import DataLoadError, safe_load_pickle, validate_dataframe, validate_file_exists
 except ImportError:
-    import logging
-
-    logging.warning("utils.py not found, using fallback")
+    logger.warning("utils.py not found, using fallback")
     # Fallback implementations would go here
-
-logger = get_logger(__name__)
 
 
 @st.cache_resource(show_spinner=True)
@@ -83,14 +79,12 @@ def load_data(pickle_path: Path) -> Tuple[
 
     # Security: Sanitize file path (prevent path traversal)
     if SECURITY_UTILS_AVAILABLE:
-        from pathlib import Path
-
         base_dir = pickle_path.parent.resolve()
         is_valid, sanitized_path = sanitize_file_path(pickle_path, allowed_base=base_dir.parent)
         if not is_valid:
             logger.error(f"Security: Path traversal attempt detected: {pickle_path}")
             raise DataLoadError(
-                f"Invalid file path: potential path traversal attack",
+                "Invalid file path: potential path traversal attack",
                 details={"file_path": str(pickle_path), "security_check": "path_sanitization"},
             )
         if sanitized_path:
