@@ -1,17 +1,18 @@
-import pickle
-import pandas as pd
-import numpy as np
 import os
+import pickle
+
+import numpy as np
+import pandas as pd
 
 # -------------------------------------------------
 # SETTINGS
 # -------------------------------------------------
-PICKLE_IN = "prepare_data.pkl"          # large original pickle
-PICKLE_OUT = "prepare_data_demo.pkl"    # small/demo pickle
-USER_ID_DEMO = 108170                   # user ID to display
-MIN_OVERLAP_RATIO = 0.60                # overlap threshold for user-based
-TOP_REF_FILM_COUNT = 30                 # number of most similar films for item-based
-TOP_CONTENT_FILM_COUNT = 100            # number of top similar films for content-based
+PICKLE_IN = "prepare_data.pkl"  # large original pickle
+PICKLE_OUT = "prepare_data_demo.pkl"  # small/demo pickle
+USER_ID_DEMO = 108170  # user ID to display
+MIN_OVERLAP_RATIO = 0.60  # overlap threshold for user-based
+TOP_REF_FILM_COUNT = 30  # number of most similar films for item-based
+TOP_CONTENT_FILM_COUNT = 100  # number of top similar films for content-based
 
 
 # -------------------------------------------------
@@ -48,10 +49,14 @@ user_movie_count = watched_df.T.notnull().sum().reset_index()
 user_movie_count.columns = ["userId", "movie_count"]
 
 threshold_common = num_watched * MIN_OVERLAP_RATIO
-candidate_users = user_movie_count[
-    (user_movie_count["userId"] != USER_ID_DEMO) &
-    (user_movie_count["movie_count"] > threshold_common)
-]["userId"].unique().tolist()
+candidate_users = (
+    user_movie_count[
+        (user_movie_count["userId"] != USER_ID_DEMO)
+        & (user_movie_count["movie_count"] > threshold_common)
+    ]["userId"]
+    .unique()
+    .tolist()
+)
 
 keep_users_user_based = set(candidate_users + [USER_ID_DEMO])
 print("Candidate user count:", len(candidate_users))
@@ -91,7 +96,7 @@ print("Item-based top similar film count:", len(top_similar_titles))
 # 5. CONTENT-BASED: SIMILAR FILMS BY GENRE
 # -------------------------------------------------
 keep_titles_initial = set(watched_movies_titles) | set(top_similar_titles)
-title_to_idx = {t: i for i, t in enumerate(movie_full['title'].tolist())}
+title_to_idx = {t: i for i, t in enumerate(movie_full["title"].tolist())}
 expanded_titles = set(keep_titles_initial)
 
 for t in list(keep_titles_initial):
@@ -101,7 +106,7 @@ for t in list(keep_titles_initial):
         sim_scores = sorted(sim_scores, key=lambda x: x[1], reverse=True)
         top_neighbors_idx = [i for i, _ in sim_scores[:TOP_CONTENT_FILM_COUNT]]
         for ni in top_neighbors_idx:
-            expanded_titles.add(movie_full.iloc[ni]['title'])
+            expanded_titles.add(movie_full.iloc[ni]["title"])
 
 print("Film count (expanded_titles):", len(expanded_titles))
 
@@ -110,38 +115,35 @@ print("Film count (expanded_titles):", len(expanded_titles))
 # -------------------------------------------------
 user_movie_df_small = user_movie_df_full.loc[
     user_movie_df_full.index.isin(keep_users_user_based),
-    user_movie_df_full.columns.isin(expanded_titles)
+    user_movie_df_full.columns.isin(expanded_titles),
 ].copy()
 
 keep_movies_df = movie_full[movie_full["title"].isin(expanded_titles)].copy()
 keep_movie_ids = keep_movies_df["movieId"].unique().tolist()
 
 rating_small = rating_full[
-    (rating_full["userId"].isin(keep_users_user_based)) &
-    (rating_full["movieId"].isin(keep_movie_ids))
+    (rating_full["userId"].isin(keep_users_user_based))
+    & (rating_full["movieId"].isin(keep_movie_ids))
 ].copy()
 
 df_full_small = df_full_full[
-    (df_full_full["userId"].isin(keep_users_user_based)) &
-    (df_full_full["movieId"].isin(keep_movie_ids))
+    (df_full_full["userId"].isin(keep_users_user_based))
+    & (df_full_full["movieId"].isin(keep_movie_ids))
 ].copy()
 
 common_movies_small = common_movies_full[
-    (common_movies_full["userId"].isin(keep_users_user_based)) &
-    (common_movies_full["movieId"].isin(keep_movie_ids))
+    (common_movies_full["userId"].isin(keep_users_user_based))
+    & (common_movies_full["movieId"].isin(keep_movie_ids))
 ].copy()
 
 # -------------------------------------------------
 # 7. REDUCE COSINE SIMILARITY MATRIX
 # -------------------------------------------------
-keep_idx = [title_to_idx[t] for t in movie_full['title'].tolist() if t in expanded_titles]
+keep_idx = [title_to_idx[t] for t in movie_full["title"].tolist() if t in expanded_titles]
 cosine_sim_genre_small = cosine_sim_genre_full[np.ix_(keep_idx, keep_idx)]
 movie_small = movie_full.iloc[keep_idx].reset_index(drop=True)
 
-missing_titles = [
-    c for c in user_movie_df_small.columns
-    if c not in movie_small["title"].values
-]
+missing_titles = [c for c in user_movie_df_small.columns if c not in movie_small["title"].values]
 if missing_titles:
     print("WARNING: user_movie_df_small contains titles not in movie_small:", missing_titles)
 
@@ -154,7 +156,7 @@ data_small = {
     "df_full": df_full_small,
     "common_movies": common_movies_small,
     "user_movie_df": user_movie_df_small,
-    "cosine_sim_genre": cosine_sim_genre_small
+    "cosine_sim_genre": cosine_sim_genre_small,
 }
 
 with open(PICKLE_OUT, "wb") as f:

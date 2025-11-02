@@ -8,17 +8,17 @@ from typing import Any, Callable, Optional, Type, TypeVar
 
 import streamlit as st
 
-from utils import DataLoadError, ValidationError
 from logging_config import get_logger
+from utils import DataLoadError, ValidationError
 
 logger = get_logger(__name__)
 
-F = TypeVar('F', bound=Callable[..., Any])
+F = TypeVar("F", bound=Callable[..., Any])
 
 
 class ApplicationError(Exception):
     """Base exception for all application-specific errors."""
-    
+
     def __init__(self, message: str, details: Optional[dict] = None):
         super().__init__(message)
         self.message = message
@@ -28,16 +28,19 @@ class ApplicationError(Exception):
 
 class DataProcessingError(ApplicationError):
     """Raised when data processing operations fail."""
+
     pass
 
 
 class RecommendationError(ApplicationError):
     """Raised when recommendation generation fails."""
+
     pass
 
 
 class ConfigurationError(ApplicationError):
     """Raised when configuration is invalid or missing."""
+
     pass
 
 
@@ -53,15 +56,15 @@ def handle_errors(
         yield
     except Exception as e:
         error_msg = user_message or str(e)
-        
+
         if log_details:
             logger.exception(f"{error_type.__name__}: {error_msg}")
         else:
             logger.error(f"{error_type.__name__}: {error_msg}")
-        
+
         if not isinstance(e, error_type):
             raise error_type(error_msg, details={"original_error": str(e)}) from e
-        
+
         if reraise:
             raise
 
@@ -132,7 +135,9 @@ def _handle_application_error(
     """Handle ApplicationError in Streamlit context."""
     error_msg = f"❌ Error: {error.message}"
     if log_error:
-        logger.error(f"Application error in {func_name}: {error.message}", extra=error.details, exc_info=True)
+        logger.error(
+            f"Application error in {func_name}: {error.message}", extra=error.details, exc_info=True
+        )
     if show_user_message:
         st.error(error_msg)
     if show_technical_details:
@@ -167,28 +172,40 @@ def streamlit_error_handler(
     log_error: bool = True,
 ):
     """Decorator for Streamlit-specific error handling."""
+
     def decorator(func: F) -> F:
         @wraps(func)
         def wrapper(*args, **kwargs):
             try:
                 return func(*args, **kwargs)
             except ValidationError as e:
-                _handle_validation_error(e, func.__name__, show_user_message, show_technical_details, log_error)
+                _handle_validation_error(
+                    e, func.__name__, show_user_message, show_technical_details, log_error
+                )
                 return None
             except DataLoadError as e:
-                _handle_data_load_error(e, func.__name__, show_user_message, show_technical_details, log_error)
+                _handle_data_load_error(
+                    e, func.__name__, show_user_message, show_technical_details, log_error
+                )
                 return None
             except RecommendationError as e:
-                _handle_recommendation_error(e, func.__name__, show_user_message, show_technical_details, log_error)
+                _handle_recommendation_error(
+                    e, func.__name__, show_user_message, show_technical_details, log_error
+                )
                 return None
             except ApplicationError as e:
-                _handle_application_error(e, func.__name__, show_user_message, show_technical_details, log_error)
+                _handle_application_error(
+                    e, func.__name__, show_user_message, show_technical_details, log_error
+                )
                 return None
             except Exception as e:
-                _handle_generic_exception(e, func.__name__, show_user_message, show_technical_details, log_error)
+                _handle_generic_exception(
+                    e, func.__name__, show_user_message, show_technical_details, log_error
+                )
                 return None
-        
+
         return wrapper
+
     return decorator
 
 
@@ -215,24 +232,24 @@ def format_error_message(error: Exception, include_traceback: bool = False) -> s
     """Format error message for display or logging."""
     error_type = type(error).__name__
     error_msg = str(error)
-    
+
     formatted = f"{error_type}: {error_msg}"
-    
+
     if include_traceback:
         formatted += f"\n\nTraceback:\n{traceback.format_exc()}"
-    
+
     return formatted
 
 
 def handle_streamlit_exception(error: Exception, show_to_user: bool = True):
     """Handle exception in Streamlit context."""
     error_type = type(error).__name__
-    
+
     if isinstance(error, ApplicationError):
         logger.error(f"{error_type}: {error.message}", extra=error.details, exc_info=True)
     else:
         logger.exception(f"Unexpected error: {error_type}: {str(error)}")
-    
+
     if show_to_user:
         if isinstance(error, ValidationError):
             st.error(f"❌ Validation Error: {str(error)}")
@@ -245,4 +262,3 @@ def handle_streamlit_exception(error: Exception, show_to_user: bool = True):
             st.error(f"❌ Error: {error.message}")
         else:
             st.error("❌ An unexpected error occurred. Please check logs.")
-

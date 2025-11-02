@@ -19,6 +19,7 @@ try:
     from utils import validate_user_id
 except ImportError:
     import logging
+
     logging.warning("utils.py or config.py not found, using fallback")
     config = None
     RecommendationError = Exception
@@ -63,25 +64,18 @@ def precompute_for_user_itembased(
     is_valid, error = validate_user_id(chosen_user, all_user_ids)
     if not is_valid:
         logger.warning(f"Invalid user ID for item-based: {chosen_user} - {error}")
-        return {
-            "status": "no_user",
-            "reference_movie": None,
-            "similarity_df": pd.DataFrame()
-        }
-    
+        return {"status": "no_user", "reference_movie": None, "similarity_df": pd.DataFrame()}
+
     try:
         # Movies user gave 5 stars to (using config constant)
         five_star_rating = config.FIVE_STAR_RATING if config else 5.0
-        user_5 = rating[
-            (rating["userId"] == chosen_user) &
-            (rating["rating"] == five_star_rating)
-        ]
+        user_5 = rating[(rating["userId"] == chosen_user) & (rating["rating"] == five_star_rating)]
 
         if user_5.empty:
             return {
                 "status": "no_five_star",
                 "reference_movie": None,
-                "similarity_df": pd.DataFrame()
+                "similarity_df": pd.DataFrame(),
             }
 
         # most recently given 5★
@@ -93,11 +87,7 @@ def precompute_for_user_itembased(
         ref_movie_id = last_fav["movieId"]
         ref_title_arr = movie.loc[movie["movieId"] == ref_movie_id, "title"].values
         if len(ref_title_arr) == 0:
-            return {
-                "status": "no_title",
-                "reference_movie": None,
-                "similarity_df": pd.DataFrame()
-            }
+            return {"status": "no_title", "reference_movie": None, "similarity_df": pd.DataFrame()}
 
         ref_title = ref_title_arr[0]
 
@@ -106,7 +96,7 @@ def precompute_for_user_itembased(
             return {
                 "status": "not_in_matrix",
                 "reference_movie": ref_title,
-                "similarity_df": pd.DataFrame()
+                "similarity_df": pd.DataFrame(),
             }
 
         ref_vector = user_movie_df[ref_title]
@@ -119,18 +109,14 @@ def precompute_for_user_itembased(
             .rename(columns={"index": "Similar Film", 0: "Similarity"})
         )
 
-        return {
-            "status": "ok",
-            "reference_movie": ref_title,
-            "similarity_df": similarity_df
-        }
+        return {"status": "ok", "reference_movie": ref_title, "similarity_df": similarity_df}
     except Exception as e:
         logger.exception(f"Error in precompute_for_user_itembased for user {chosen_user}: {e}")
         return {
             "status": "error",
             "error_message": str(e),
             "reference_movie": None,
-            "similarity_df": pd.DataFrame()
+            "similarity_df": pd.DataFrame(),
         }
 
 
@@ -180,4 +166,3 @@ def finalize_item_based_from_cache(
     except Exception as e:
         logger.exception(f"Error in finalize_item_based_from_cache: {e}")
         return "error", None, pd.DataFrame()
-

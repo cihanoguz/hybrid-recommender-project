@@ -4,8 +4,8 @@ from typing import Tuple
 import pandas as pd
 import streamlit as st
 
+from error_handling import DataLoadError, handle_errors, handle_streamlit_exception
 from logging_config import get_logger
-from error_handling import DataLoadError, handle_streamlit_exception, handle_errors
 
 logger = get_logger(__name__)
 
@@ -15,6 +15,7 @@ try:
 except ImportError:
     logger.warning("utils.py or config.py not found, using fallback configuration")
     import config
+
     ValidationError = Exception
 
 from data_loader import load_data
@@ -44,7 +45,8 @@ render_header(logo_b64)
 render_styles()
 
 # JavaScript for tab persistence after Streamlit rerun
-st.markdown("""
+st.markdown(
+    """
 <script>
 (function() {
     'use strict';
@@ -187,7 +189,9 @@ st.markdown("""
     }, true);
 })();
 </script>
-""", unsafe_allow_html=True)
+""",
+    unsafe_allow_html=True,
+)
 
 # Load data
 movie = None
@@ -200,7 +204,9 @@ cosine_sim_genre = None
 
 try:
     with handle_errors(DataLoadError, "Data loading error", log_details=True):
-        movie, rating, df_full, common_movies, user_movie_df, all_user_ids, cosine_sim_genre = load_data(PICKLE_PATH)
+        movie, rating, df_full, common_movies, user_movie_df, all_user_ids, cosine_sim_genre = (
+            load_data(PICKLE_PATH)
+        )
         logger.info("Data loaded successfully")
 except DataLoadError as e:
     handle_streamlit_exception(e, show_to_user=True)
@@ -219,6 +225,7 @@ if df_full is None or common_movies is None or user_movie_df is None:
 def get_matrix_shape(df: pd.DataFrame) -> Tuple[int, int]:
     """Get DataFrame shape."""
     return df.shape
+
 
 # Tabs
 if "active_tab" not in st.session_state:
@@ -260,28 +267,34 @@ with tab_problem:
     col1, col2, col3 = st.columns(3)
 
     with col1:
-        st.markdown("""
+        st.markdown(
+            """
         ### 🧑‍🤝‍🧑 User-Based
         - Find users with similar taste to me
         - Bring films they liked but I haven't watched
         - Sort by weighted score
-        """)
+        """
+        )
 
     with col2:
-        st.markdown("""
+        st.markdown(
+            """
         ### 🎬 Item-Based
         - Find the film I last rated 5⭐
         - Calculate similar films using correlation
         - Sort the most similar ones
-        """)
+        """
+        )
 
     with col3:
-        st.markdown("""
+        st.markdown(
+            """
         ### 🏷️ Content-Based
         - Select a film
         - Check genre information
         - Bring films in the same tone using cosine similarity
-        """)
+        """
+        )
 
     st.success(
         "These three approaches are usually combined into one package in real life. This is what we call a hybrid system."
@@ -307,7 +320,7 @@ with tab_dataset:
             f"<div class='metric-title'>Total Users (raw)</div>"
             f"<div class='metric-value'>{total_users_full:,}</div>"
             f"</div>",
-            unsafe_allow_html=True
+            unsafe_allow_html=True,
         )
     with c2:
         st.markdown(
@@ -315,7 +328,7 @@ with tab_dataset:
             f"<div class='metric-title'>Total Movies (raw)</div>"
             f"<div class='metric-value'>{total_movies_full:,}</div>"
             f"</div>",
-            unsafe_allow_html=True
+            unsafe_allow_html=True,
         )
     with c3:
         st.markdown(
@@ -323,7 +336,7 @@ with tab_dataset:
             f"<div class='metric-title'>Total Ratings (raw)</div>"
             f"<div class='metric-value'>{total_ratings_full:,}</div>"
             f"</div>",
-            unsafe_allow_html=True
+            unsafe_allow_html=True,
         )
 
     st.write(
@@ -342,7 +355,7 @@ with tab_dataset:
             <div class='header-badge'>Movie information</div>
         </div>
         """,
-        unsafe_allow_html=True
+        unsafe_allow_html=True,
     )
     st.markdown(
         """
@@ -352,7 +365,7 @@ with tab_dataset:
         <tr><th>genres</th><td>Genre information (Action|Comedy|Drama ...)</td></tr>
         </table>
         """,
-        unsafe_allow_html=True
+        unsafe_allow_html=True,
     )
 
     st.markdown("**rating.csv**")
@@ -364,7 +377,7 @@ with tab_dataset:
             <div class='header-badge'>User ratings</div>
         </div>
         """,
-        unsafe_allow_html=True
+        unsafe_allow_html=True,
     )
     st.markdown(
         """
@@ -375,7 +388,7 @@ with tab_dataset:
         <tr><th>timestamp</th><td>Time when rated</td></tr>
         </table>
         """,
-        unsafe_allow_html=True
+        unsafe_allow_html=True,
     )
 
     st.subheader("Data Preparation Steps")
@@ -444,7 +457,7 @@ with tab_dataset:
         </tr>
         </table>
         """,
-        unsafe_allow_html=True
+        unsafe_allow_html=True,
     )
 
     st.info(
@@ -455,7 +468,8 @@ with tab_tasks:
     st.title("Project Tasks and Live Recommendation Engine")
 
     st.subheader("Approaches")
-    st.markdown("""
+    st.markdown(
+        """
     **User-Based**  
     Find users similar to me, bring films they liked but I haven't watched.  
     Correlation (corr) = taste similarity. Weighted Score = corr * average rating.
@@ -467,7 +481,8 @@ with tab_tasks:
     **Content-Based**  
     Only look at content. Calculate cosine similarity between genre vectors.  
     'What other films are closest to this film's genre DNA?'
-    """)
+    """
+    )
 
     st.info(
         """
@@ -475,7 +490,7 @@ with tab_tasks:
         (user-based + item-based + content-based),
         we consider that film more reliable.
         """
-)
+    )
 
     # LEFT and RIGHT columns
     left_col, right_col = st.columns([1, 2])
@@ -492,7 +507,7 @@ with tab_tasks:
             min_value=1,
             value=config.DEFAULT_USER_ID,
             step=1,
-            help=f"User ID to analyze. Available user IDs range from {min(all_user_ids) if all_user_ids is not None else 1} to {max(all_user_ids) if all_user_ids is not None else 1}"
+            help=f"User ID to analyze. Available user IDs range from {min(all_user_ids) if all_user_ids is not None else 1} to {max(all_user_ids) if all_user_ids is not None else 1}",
         )
 
         rec_type = st.radio(
@@ -501,9 +516,9 @@ with tab_tasks:
                 "User-Based (Users Like Me)",
                 "Item-Based (Similar to This Film)",
                 "Content-Based (Similar Genre Films)",
-                "Hybrid (Combine All)"
+                "Hybrid (Combine All)",
             ],
-            key="rec_type_radio"
+            key="rec_type_radio",
         )
 
         st.markdown("---")
@@ -517,7 +532,7 @@ with tab_tasks:
                 max_value=config.MAX_OVERLAP_RATIO,
                 value=config.DEFAULT_OVERLAP_RATIO_PCT,
                 step=5.0,
-                help="Consider users who watched at least 60% of the films I watched as 'similar'."
+                help="Consider users who watched at least 60% of the films I watched as 'similar'.",
             )
 
             corr_threshold = st.slider(
@@ -526,7 +541,7 @@ with tab_tasks:
                 max_value=config.MAX_CORR_THRESHOLD,
                 value=config.DEFAULT_CORR_THRESHOLD,
                 step=0.05,
-                help="0.65 and above: really similar to me."
+                help="0.65 and above: really similar to me.",
             )
 
             max_neighbors = st.slider(
@@ -535,7 +550,7 @@ with tab_tasks:
                 max_value=config.MAX_NEIGHBORS,
                 value=config.DEFAULT_MAX_NEIGHBORS,
                 step=1,
-                help="How many similar users should we use?"
+                help="How many similar users should we use?",
             )
 
             weighted_score_threshold = st.slider(
@@ -544,7 +559,7 @@ with tab_tasks:
                 max_value=config.MAX_WEIGHTED_SCORE,
                 value=config.DEFAULT_WEIGHTED_SCORE_THRESHOLD,
                 step=0.1,
-                help="Recommend if (corr * rating) average is above 3.5."
+                help="Recommend if (corr * rating) average is above 3.5.",
             )
 
             top_n_user_based = st.slider(
@@ -553,7 +568,7 @@ with tab_tasks:
                 max_value=config.MAX_TOP_N,
                 value=config.DEFAULT_TOP_N,
                 step=1,
-                help="How many films to list?"
+                help="How many films to list?",
             )
 
             top_n_item_based = config.DEFAULT_TOP_N
@@ -570,7 +585,7 @@ with tab_tasks:
                 max_value=config.MAX_TOP_N,
                 value=config.DEFAULT_TOP_N,
                 step=1,
-                help="Show the top N most similar films for the film the user last rated 5⭐."
+                help="Show the top N most similar films for the film the user last rated 5⭐.",
             )
 
             min_overlap_ratio_pct = config.DEFAULT_OVERLAP_RATIO_PCT
@@ -595,22 +610,22 @@ with tab_tasks:
                 "Search / type film (for autocomplete):",
                 value="",
                 help="Type first few letters. The box below will filter accordingly.",
-                max_chars=200
+                max_chars=200,
             )
 
             search_term = sanitize_user_input(search_term_raw, max_length=200)
 
             if search_term.strip():
                 filtered_titles = sorted(
-                    [t for t in movie['title'].tolist() if search_term.lower() in t.lower()]
+                    [t for t in movie["title"].tolist() if search_term.lower() in t.lower()]
                 )
             else:
-                filtered_titles = sorted(movie['title'].tolist())
+                filtered_titles = sorted(movie["title"].tolist())
 
             selected_movie_title = st.selectbox(
                 "Select Reference Film",
                 options=filtered_titles,
-                help="We will find films most similar to this film by genre."
+                help="We will find films most similar to this film by genre.",
             )
 
             top_n_content = st.slider(
@@ -618,7 +633,7 @@ with tab_tasks:
                 min_value=config.MIN_TOP_N,
                 max_value=config.MAX_TOP_N,
                 value=config.DEFAULT_TOP_N,
-                step=1
+                step=1,
             )
 
             min_overlap_ratio_pct = config.DEFAULT_OVERLAP_RATIO_PCT
@@ -647,30 +662,38 @@ with tab_tasks:
                 max_value=config.MAX_TOP_N,
                 value=config.DEFAULT_TOP_N,
                 step=1,
-                help="List the top N films from common/strong candidates of all three approaches."
+                help="List the top N films from common/strong candidates of all three approaches.",
             )
 
         is_project_tasks_page = True
         st.session_state.active_tab = "project-tasks"
-        
-        st.markdown("""
+
+        st.markdown(
+            """
         <script>
         sessionStorage.setItem('stayOnProjectTasks', 'true');
         </script>
-        """, unsafe_allow_html=True)
-            
-        run_button = st.button("🎬 Calculate Recommendations", type="primary", key="calculate_button")
-        
+        """,
+            unsafe_allow_html=True,
+        )
+
+        run_button = st.button(
+            "🎬 Calculate Recommendations", type="primary", key="calculate_button"
+        )
+
         if run_button:
             st.session_state.button_clicked = True
             st.session_state.active_tab = "project-tasks"
-            st.markdown("""
+            st.markdown(
+                """
             <script>
             if (typeof sessionStorage !== 'undefined') {
                 sessionStorage.setItem('stayOnProjectTasks', 'true');
             }
             </script>
-            """, unsafe_allow_html=True)
+            """,
+                unsafe_allow_html=True,
+            )
 
     with right_col:
         st.markdown("### Solution Output")
@@ -693,7 +716,7 @@ with tab_tasks:
                         top_n=top_n_user_based,
                         chosen_user=chosen_user,
                         rating=rating,
-                        movie=movie
+                        movie=movie,
                     )
 
                 status = result_user["status"]
@@ -706,42 +729,61 @@ with tab_tasks:
                 neigh_dbg = result_user.get("dbg_neighbor_ratings", pd.DataFrame())
 
                 if status != "ok":
-                    st.warning(f"User-Based recommendations could not be generated. Status: {status}")
+                    st.warning(
+                        f"User-Based recommendations could not be generated. Status: {status}"
+                    )
                     with st.expander("🔎 Debug / Intermediate Steps (detailed calculation steps)"):
-                        st.write("• candidate_users_df = 'Everyone who watched common films with target user'")
+                        st.write(
+                            "• candidate_users_df = 'Everyone who watched common films with target user'"
+                        )
                         st.write("Shape:", cand_df.shape)
                         st.dataframe(cand_df.head(20))
 
-                        st.write("• corr_df = 'Each candidate user's correlation with target user (taste similarity)'")
+                        st.write(
+                            "• corr_df = 'Each candidate user's correlation with target user (taste similarity)'"
+                        )
                         st.write("Shape:", corr_df_dbg.shape)
                         st.dataframe(corr_df_dbg.head(20))
 
-                        st.write("• corr_filtered = 'Both sufficient common film count AND corr above threshold'")
+                        st.write(
+                            "• corr_filtered = 'Both sufficient common film count AND corr above threshold'"
+                        )
                         st.write("Shape:", corr_filtered_dbg.shape)
                         st.dataframe(corr_filtered_dbg.head(20))
 
-                        st.write("• neighbor_ratings = 'Which films these similar users rated how much'")
+                        st.write(
+                            "• neighbor_ratings = 'Which films these similar users rated how much'"
+                        )
                         st.write("Shape:", neigh_dbg.shape)
                         st.dataframe(neigh_dbg.head(20))
 
                 else:
                     if recs_df.empty:
                         st.info("No recommendations found matching the parameters.")
-                        with st.expander("🔎 Debug / Intermediate Steps (detailed calculation steps)"):
-                            st.write("• candidate_users_df = 'Everyone who watched common films with target user'")
+                        with st.expander(
+                            "🔎 Debug / Intermediate Steps (detailed calculation steps)"
+                        ):
+                            st.write(
+                                "• candidate_users_df = 'Everyone who watched common films with target user'"
+                            )
                             st.write("Shape:", cand_df.shape)
                             st.dataframe(cand_df.head(20))
 
                             st.write(
-                                "• corr_df = 'Each candidate user's correlation with target user (taste similarity)'")
+                                "• corr_df = 'Each candidate user's correlation with target user (taste similarity)'"
+                            )
                             st.write("Shape:", corr_df_dbg.shape)
                             st.dataframe(corr_df_dbg.head(20))
 
-                            st.write("• corr_filtered = 'Both sufficient common film count AND corr above threshold'")
+                            st.write(
+                                "• corr_filtered = 'Both sufficient common film count AND corr above threshold'"
+                            )
                             st.write("Shape:", corr_filtered_dbg.shape)
                             st.dataframe(corr_filtered_dbg.head(20))
 
-                            st.write("• neighbor_ratings = 'Which films these similar users rated how much'")
+                            st.write(
+                                "• neighbor_ratings = 'Which films these similar users rated how much'"
+                            )
                             st.write("Shape:", neigh_dbg.shape)
                             st.dataframe(neigh_dbg.head(20))
 
@@ -760,7 +802,7 @@ with tab_tasks:
                                 </div>
                             </div>
                             """,
-                            unsafe_allow_html=True
+                            unsafe_allow_html=True,
                         )
 
                         col_a, col_b, col_c, col_d = st.columns(4)
@@ -769,57 +811,61 @@ with tab_tasks:
                             st.metric(
                                 label="Movies Watched Count",
                                 value=debug_info.get("movies_watched", "?"),
-                                help="Number of films the target user rated (example: 186)."
+                                help="Number of films the target user rated (example: 186).",
                             )
 
                         with col_b:
                             st.metric(
                                 label="Initial Candidate Pool",
                                 value=debug_info.get("candidate_users", "?"),
-                                help="Number of users sharing at least one common film with this user. Raw initial pool."
+                                help="Number of users sharing at least one common film with this user. Raw initial pool.",
                             )
 
                         with col_c:
                             st.metric(
                                 label="Similar Users (Overlap+Corr)",
                                 value=debug_info.get("after_corr_users", "?"),
-                                help="Number of users who passed both common viewing percentage threshold and correlation threshold. (top_users)"
+                                help="Number of users who passed both common viewing percentage threshold and correlation threshold. (top_users)",
                             )
 
                         with col_d:
                             st.metric(
                                 label="Neighbors Included in Score",
                                 value=debug_info.get("used_neighbors", "?"),
-                                help="Number of most similar neighbors used when calculating recommendation score."
+                                help="Number of most similar neighbors used when calculating recommendation score.",
                             )
 
                         st.markdown("#### 🎬 User-Based Recommendations")
-                        st.dataframe(
-                            recs_df.reset_index(drop=True),
-                            use_container_width=True
-                        )
+                        st.dataframe(recs_df.reset_index(drop=True), use_container_width=True)
 
-                        with st.expander("🔎 Debug / Intermediate Steps (detailed calculation steps)"):
+                        with st.expander(
+                            "🔎 Debug / Intermediate Steps (detailed calculation steps)"
+                        ):
                             st.write("STAGE 1 · candidate_users_df")
                             st.caption(
-                                "How many of the films watched by target user did other users also watch? movie_count shows this.")
+                                "How many of the films watched by target user did other users also watch? movie_count shows this."
+                            )
                             st.write("Shape:", cand_df.shape)
                             st.dataframe(cand_df.head(20))
 
                             st.write("STAGE 2 · corr_df")
                             st.caption(
-                                "Correlation between target user and other users (taste similarity). corr = 1 → same taste, 0 → no relationship.")
+                                "Correlation between target user and other users (taste similarity). corr = 1 → same taste, 0 → no relationship."
+                            )
                             st.write("Shape:", corr_df_dbg.shape)
                             st.dataframe(corr_df_dbg.head(20))
 
                             st.write("STAGE 3 · corr_filtered (neighbors)")
                             st.caption(
-                                "Users who watched sufficient common films AND exceeded corr threshold. So really 'like me'.")
+                                "Users who watched sufficient common films AND exceeded corr threshold. So really 'like me'."
+                            )
                             st.write("Shape:", corr_filtered_dbg.shape)
                             st.dataframe(corr_filtered_dbg.head(20))
 
                             st.write("STAGE 4 · neighbor_ratings")
-                            st.caption("Which films these neighbors rated how much, and weighted score = corr × rating.")
+                            st.caption(
+                                "Which films these neighbors rated how much, and weighted score = corr × rating."
+                            )
                             st.write("Shape:", neigh_dbg.shape)
                             st.dataframe(neigh_dbg.head(20))
 
@@ -829,8 +875,7 @@ with tab_tasks:
                         chosen_user, all_user_ids, rating, movie, user_movie_df
                     )
                     status_i, ref_movie, sim_df = finalize_item_based_from_cache(
-                        pre_i,
-                        top_n_item_based
+                        pre_i, top_n_item_based
                     )
 
                 if status_i != "ok":
@@ -841,7 +886,9 @@ with tab_tasks:
                             f"Reference film not in user-movie matrix: {pre_i['reference_movie']}"
                         )
                     else:
-                        st.warning(f"Item-Based recommendations could not be generated. Status: {status_i}")
+                        st.warning(
+                            f"Item-Based recommendations could not be generated. Status: {status_i}"
+                        )
                 else:
                     st.success("Item-Based recommendations ready.")
 
@@ -850,7 +897,7 @@ with tab_tasks:
                         f"<div class='metric-title'>Reference Film (user's last 5⭐ rating)</div>"
                         f"<div class='metric-value'>{ref_movie}</div>"
                         f"</div>",
-                        unsafe_allow_html=True
+                        unsafe_allow_html=True,
                     )
 
                     st.markdown(
@@ -861,7 +908,7 @@ with tab_tasks:
                     st.markdown(f"Total {len(sim_df)} similar films found.")
                     st.dataframe(
                         sim_df.head(top_n_item_based).reset_index(drop=True),
-                        use_container_width=True
+                        use_container_width=True,
                     )
 
             elif rec_type.startswith("Content-Based"):
@@ -870,7 +917,7 @@ with tab_tasks:
                         movie_title=selected_movie_title,
                         top_n=top_n_content,
                         movie=movie,
-                        cosine_sim_genre=cosine_sim_genre
+                        cosine_sim_genre=cosine_sim_genre,
                     )
 
                 status_c = cb_result["status"]
@@ -890,7 +937,7 @@ with tab_tasks:
                         f"<div class='metric-value'>{ref_movie_cb}</div>"
                         f"<div class='metric-title'>Genres: {ref_genres_cb}</div>"
                         f"</div>",
-                        unsafe_allow_html=True
+                        unsafe_allow_html=True,
                     )
 
                     with st.expander("How does Content-Based work?"):
@@ -911,7 +958,7 @@ with tab_tasks:
                     st.markdown(f"Total {len(rec_df_cb)} similar films found.")
                     st.dataframe(
                         rec_df_cb.head(top_n_content).reset_index(drop=True),
-                        use_container_width=True
+                        use_container_width=True,
                     )
 
             else:  # Hybrid
@@ -928,7 +975,7 @@ with tab_tasks:
                         top_n=top_n_user_based,
                         chosen_user=chosen_user,
                         rating=rating,
-                        movie=movie
+                        movie=movie,
                     )
                     if result_user["status"] == "ok" and not result_user["recommendations"].empty:
                         df_user_part = result_user["recommendations"].copy()
@@ -944,8 +991,7 @@ with tab_tasks:
                         chosen_user, all_user_ids, rating, movie, user_movie_df
                     )
                     status_i, ref_movie_i, sim_df_i = finalize_item_based_from_cache(
-                        pre_i,
-                        top_n_item_based
+                        pre_i, top_n_item_based
                     )
                     if status_i == "ok" and sim_df_i is not None and not sim_df_i.empty:
                         df_item_part = sim_df_i.copy()
@@ -961,7 +1007,7 @@ with tab_tasks:
                             movie_title=ref_movie_i,
                             top_n=top_n_content,
                             movie=movie,
-                            cosine_sim_genre=cosine_sim_genre
+                            cosine_sim_genre=cosine_sim_genre,
                         )
                         if cb_result["status"] == "ok" and not cb_result["recommendations"].empty:
                             df_cb_part = cb_result["recommendations"].copy()
@@ -971,17 +1017,20 @@ with tab_tasks:
                             )
                             df_cb_part = df_cb_part[["Film_Name", "Model_Score", "Source"]]
                         else:
-                            df_cb_part = pd.DataFrame(columns=["Film_Name", "Model_Score", "Source"])
+                            df_cb_part = pd.DataFrame(
+                                columns=["Film_Name", "Model_Score", "Source"]
+                            )
                     else:
                         df_cb_part = pd.DataFrame(columns=["Film_Name", "Model_Score", "Source"])
 
                     combined_all = pd.concat(
-                        [df_user_part, df_item_part, df_cb_part],
-                        ignore_index=True
+                        [df_user_part, df_item_part, df_cb_part], ignore_index=True
                     )
 
                 if combined_all.empty:
-                    st.warning("Hybrid system could not generate recommendations (insufficient signals).")
+                    st.warning(
+                        "Hybrid system could not generate recommendations (insufficient signals)."
+                    )
                 else:
                     st.markdown(
                         f"<div class='metric-card'>"
@@ -992,15 +1041,14 @@ with tab_tasks:
                         f"'Source_Count' shows this."
                         f"</div>"
                         f"</div>",
-                        unsafe_allow_html=True
+                        unsafe_allow_html=True,
                     )
 
                     hybrid_summary = (
-                        combined_all
-                        .groupby("Film_Name")
+                        combined_all.groupby("Film_Name")
                         .agg(
                             Source_Count=("Source", "nunique"),
-                            Average_Score=("Model_Score", "mean")
+                            Average_Score=("Model_Score", "mean"),
                         )
                         .reset_index()
                     )
@@ -1011,8 +1059,7 @@ with tab_tasks:
                     )
 
                     hybrid_summary = hybrid_summary.sort_values(
-                        by=["Hybrid_Confidence", "Source_Count", "Average_Score"],
-                        ascending=False
+                        by=["Hybrid_Confidence", "Source_Count", "Average_Score"], ascending=False
                     ).head(hybrid_top_n)
 
                     st.success("Hybrid (Common Candidates from All Models)")
@@ -1022,22 +1069,25 @@ with tab_tasks:
                         if df_user_part.empty:
                             st.write("No User-Based results.")
                         else:
-                            st.dataframe(df_user_part.reset_index(drop=True),
-                                         use_container_width=True)
+                            st.dataframe(
+                                df_user_part.reset_index(drop=True), use_container_width=True
+                            )
 
                     with st.expander("Item-Based details"):
                         if df_item_part.empty:
                             st.write("No Item-Based results.")
                         else:
-                            st.dataframe(df_item_part.reset_index(drop=True),
-                                         use_container_width=True)
+                            st.dataframe(
+                                df_item_part.reset_index(drop=True), use_container_width=True
+                            )
 
                     with st.expander("Content-Based details"):
                         if df_cb_part.empty:
                             st.write("No Content-Based results.")
                         else:
-                            st.dataframe(df_cb_part.reset_index(drop=True),
-                                         use_container_width=True)
+                            st.dataframe(
+                                df_cb_part.reset_index(drop=True), use_container_width=True
+                            )
 
                     if status_i == "ok" and ref_movie_i is not None:
                         st.info(
@@ -1059,7 +1109,5 @@ st.markdown(
         <p>You can see how the recommendation logic changes as you play with the parameters.</p>
     </div>
     """,
-    unsafe_allow_html=True
+    unsafe_allow_html=True,
 )
-
-

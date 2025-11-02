@@ -90,35 +90,47 @@ class TestValidateNumericInput:
 
     def test_valid_integer(self):
         """Test validation of valid integer."""
-        is_valid, error = validate_numeric_input(42, min_value=0, max_value=100, param_name="test_param")
+        is_valid, error = validate_numeric_input(
+            42, min_value=0, max_value=100, param_name="test_param"
+        )
         assert is_valid is True
         assert error is None
 
     def test_valid_float(self):
         """Test validation of valid float."""
-        is_valid, error = validate_numeric_input(3.14, min_value=0.0, max_value=10.0, param_name="test_param")
+        is_valid, error = validate_numeric_input(
+            3.14, min_value=0.0, max_value=10.0, param_name="test_param"
+        )
         assert is_valid is True
         assert error is None
 
     def test_invalid_input(self):
         """Test validation of invalid input."""
         # Function expects numeric value, not string
-        is_valid, error = validate_numeric_input("not_a_number", min_value=0, max_value=100, param_name="test_param")
+        is_valid, error = validate_numeric_input(
+            "not_a_number", min_value=0, max_value=100, param_name="test_param"
+        )
         assert is_valid is False
         assert "must be a number" in error.lower()
 
     def test_out_of_range(self):
         """Test validation with out-of-range value."""
-        is_valid, error = validate_numeric_input(150, min_value=0, max_value=100, param_name="test_param")
+        is_valid, error = validate_numeric_input(
+            150, min_value=0, max_value=100, param_name="test_param"
+        )
         assert is_valid is False
         assert "between" in error.lower()
 
     def test_in_range_boundaries(self):
         """Test validation with boundary values."""
-        is_valid, error = validate_numeric_input(0, min_value=0, max_value=100, param_name="test_param")
+        is_valid, error = validate_numeric_input(
+            0, min_value=0, max_value=100, param_name="test_param"
+        )
         assert is_valid is True
-        
-        is_valid, error = validate_numeric_input(100, min_value=0, max_value=100, param_name="test_param")
+
+        is_valid, error = validate_numeric_input(
+            100, min_value=0, max_value=100, param_name="test_param"
+        )
         assert is_valid is True
 
 
@@ -129,10 +141,10 @@ class TestCalculateFileChecksum:
         """Test checksum calculation for a file."""
         test_file = temp_dir / "test.txt"
         test_file.write_text("test content")
-        
+
         checksum1 = calculate_file_checksum(test_file)
         checksum2 = calculate_file_checksum(test_file)
-        
+
         assert checksum1 == checksum2
         assert len(checksum1) > 0
 
@@ -142,10 +154,10 @@ class TestCalculateFileChecksum:
         file2 = temp_dir / "file2.txt"
         file1.write_text("content1")
         file2.write_text("content2")
-        
+
         checksum1 = calculate_file_checksum(file1)
         checksum2 = calculate_file_checksum(file2)
-        
+
         assert checksum1 != checksum2
 
 
@@ -170,8 +182,10 @@ class TestValidatePickleFileIntegrity:
         test_file = temp_dir / "large.pkl"
         # Create smaller file for testing (5MB to avoid disk issues)
         test_file.write_bytes(b"x" * 5 * 1024 * 1024)  # 5 MB
-        
-        is_valid, error = validate_pickle_file_integrity(test_file, max_file_size=1024 * 1024)  # 1 MB max
+
+        is_valid, error = validate_pickle_file_integrity(
+            test_file, max_file_size=1024 * 1024
+        )  # 1 MB max
         assert is_valid is False
         assert "too large" in error.lower()
 
@@ -179,8 +193,7 @@ class TestValidatePickleFileIntegrity:
         """Test validation passes file size check even for corrupted pickle."""
         corrupted_file = temp_dir / "corrupted.pkl"
         corrupted_file.write_bytes(b"invalid pickle data")
-        
+
         # Function only checks file size, not pickle validity
         is_valid, error = validate_pickle_file_integrity(corrupted_file)
         assert is_valid is True  # File size is valid, pickle validity is checked elsewhere
-

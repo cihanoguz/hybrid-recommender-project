@@ -4,8 +4,8 @@ import os
 from pathlib import Path
 from typing import List, Optional
 
-from logging_config import get_logger
 from error_handling import ConfigurationError
+from logging_config import get_logger
 
 logger = get_logger(__name__)
 
@@ -87,8 +87,7 @@ def _validate_top_n_config(errors: List[str]) -> None:
     """Validate DEFAULT_TOP_N configuration."""
     if not (MIN_TOP_N <= DEFAULT_TOP_N <= MAX_TOP_N):
         errors.append(
-            f"DEFAULT_TOP_N ({DEFAULT_TOP_N}) "
-            f"must be between {MIN_TOP_N} and {MAX_TOP_N}"
+            f"DEFAULT_TOP_N ({DEFAULT_TOP_N}) " f"must be between {MIN_TOP_N} and {MAX_TOP_N}"
         )
 
 
@@ -107,7 +106,7 @@ def _validate_paths() -> None:
 def validate_config() -> bool:
     """Validate configuration values at startup."""
     errors = []
-    
+
     _validate_user_id_config(errors)
     _validate_overlap_ratio_config(errors)
     _validate_correlation_threshold_config(errors)
@@ -116,21 +115,24 @@ def validate_config() -> bool:
     _validate_top_n_config(errors)
     _validate_server_config(errors)
     _validate_paths()
-    
+
     if errors:
         error_msg = "Configuration validation failed:\n" + "\n".join(f"  - {e}" for e in errors)
         logger.error(error_msg)
         raise ConfigurationError(
             error_msg,
-            details={"validation_errors": errors, "config_values": {
-                "DEFAULT_USER_ID": DEFAULT_USER_ID,
-                "DEFAULT_OVERLAP_RATIO_PCT": DEFAULT_OVERLAP_RATIO_PCT,
-                "DEFAULT_CORR_THRESHOLD": DEFAULT_CORR_THRESHOLD,
-                "DEFAULT_MAX_NEIGHBORS": DEFAULT_MAX_NEIGHBORS,
-                "SERVER_PORT": SERVER_PORT,
-            }}
+            details={
+                "validation_errors": errors,
+                "config_values": {
+                    "DEFAULT_USER_ID": DEFAULT_USER_ID,
+                    "DEFAULT_OVERLAP_RATIO_PCT": DEFAULT_OVERLAP_RATIO_PCT,
+                    "DEFAULT_CORR_THRESHOLD": DEFAULT_CORR_THRESHOLD,
+                    "DEFAULT_MAX_NEIGHBORS": DEFAULT_MAX_NEIGHBORS,
+                    "SERVER_PORT": SERVER_PORT,
+                },
+            },
         )
-    
+
     logger.info("Configuration validation passed")
     return True
 
@@ -141,4 +143,3 @@ except ConfigurationError as e:
     logger.warning(f"Configuration validation failed, but continuing anyway: {e.message}")
 except Exception as e:
     logger.warning(f"Unexpected error during configuration validation: {e}")
-

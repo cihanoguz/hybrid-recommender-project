@@ -19,6 +19,7 @@ try:
     from utils import validate_correlation_threshold, validate_overlap_ratio, validate_user_id
 except ImportError:
     import logging
+
     logging.warning("utils.py or config.py not found, using fallback")
     config = None
     RecommendationError = Exception
@@ -69,7 +70,7 @@ def precompute_for_user_userbased(
             "corr_df": pd.DataFrame(),
             "top_users_ratings": pd.DataFrame(),
         }
-    
+
     try:
         # Movies watched by target user
         if chosen_user not in user_movie_df.index:
@@ -100,10 +101,8 @@ def precompute_for_user_userbased(
         # How many of these movies each other user has watched
         user_movie_count_series = movies_watched_df.notnull().sum(axis=1)
 
-        candidate_users_df = (
-            user_movie_count_series
-            .reset_index()
-            .rename(columns={"index": "userId", 0: "movie_count"})
+        candidate_users_df = user_movie_count_series.reset_index().rename(
+            columns={"index": "userId", 0: "movie_count"}
         )
         candidate_users_df.columns = ["userId", "movie_count"]
 
@@ -113,11 +112,7 @@ def precompute_for_user_userbased(
         base_vector = user_movie_df.loc[chosen_user]
         corr_series = movies_watched_df.T.corrwith(base_vector).dropna()
 
-        corr_df = (
-            corr_series
-            .reset_index()
-            .rename(columns={"index": "userId", 0: "corr"})
-        )
+        corr_df = corr_series.reset_index().rename(columns={"index": "userId", 0: "corr"})
         corr_df.columns = ["userId", "corr"]
         corr_df = corr_df[corr_df["userId"] != chosen_user].copy()
 
@@ -132,9 +127,7 @@ def precompute_for_user_userbased(
 
         # Ratings from candidate neighbors
         top_users_ratings = corr_df.merge(
-            rating[["userId", "movieId", "rating"]],
-            on="userId",
-            how="inner"
+            rating[["userId", "movieId", "rating"]], on="userId", how="inner"
         )
 
         if top_users_ratings.empty:
@@ -176,7 +169,7 @@ def _create_error_response(
 ) -> Dict[str, Any]:
     """
     Create standardized error response dictionary.
-    
+
     Args:
         status: Error status string
         candidate_users_df: Candidate users DataFrame
@@ -185,7 +178,7 @@ def _create_error_response(
         neighbor_ratings: Neighbor ratings DataFrame (optional)
         debug_info: Debug information dictionary (optional)
         error_message: Error message string (optional)
-    
+
     Returns:
         Standardized error response dictionary
     """
@@ -196,7 +189,9 @@ def _create_error_response(
         "dbg_candidate_users_df": candidate_users_df,
         "dbg_corr_df": corr_df,
         "dbg_corr_filtered": corr_filtered if corr_filtered is not None else pd.DataFrame(),
-        "dbg_neighbor_ratings": neighbor_ratings if neighbor_ratings is not None else pd.DataFrame(),
+        "dbg_neighbor_ratings": (
+            neighbor_ratings if neighbor_ratings is not None else pd.DataFrame()
+        ),
     }
     if error_message:
         response["error_message"] = error_message
@@ -210,22 +205,22 @@ def _apply_overlap_filter(
 ) -> pd.Series:
     """
     Apply overlap filter to candidate users.
-    
+
     Args:
         candidate_users_df: DataFrame with candidate users and movie counts
         movies_watched: List of movie IDs watched by target user
         min_overlap_ratio_pct: Minimum overlap ratio percentage
-    
+
     Returns:
         Series of user IDs that pass the overlap filter
     """
     percentage_divisor = config.SIMILARITY_PERCENTAGE_DIVISOR if config else 100.0
     threshold_common = len(movies_watched) * (min_overlap_ratio_pct / percentage_divisor)
-    
-    good_overlap_users = candidate_users_df[
-        candidate_users_df["movie_count"] >= threshold_common
-    ]["userId"]
-    
+
+    good_overlap_users = candidate_users_df[candidate_users_df["movie_count"] >= threshold_common][
+        "userId"
+    ]
+
     return good_overlap_users
 
 
@@ -236,18 +231,17 @@ def _apply_correlation_filter(
 ) -> pd.DataFrame:
     """
     Apply correlation filter to users.
-    
+
     Args:
         corr_df: DataFrame with correlation scores
         good_overlap_users: Series of user IDs that passed overlap filter
         corr_threshold: Minimum correlation threshold
-    
+
     Returns:
         Filtered DataFrame with correlation scores
     """
     return corr_df[
-        (corr_df["userId"].isin(good_overlap_users)) &
-        (corr_df["corr"] >= corr_threshold)
+        (corr_df["userId"].isin(good_overlap_users)) & (corr_df["corr"] >= corr_threshold)
     ].copy()
 
 
@@ -257,20 +251,15 @@ def _apply_neighbor_limit(
 ) -> pd.DataFrame:
     """
     Limit the number of neighbors to consider.
-    
+
     Args:
         corr_filtered: Filtered correlation DataFrame
         max_neighbors: Maximum number of neighbors
-    
+
     Returns:
         DataFrame with top N neighbors by correlation
     """
-    return (
-        corr_filtered
-        .sort_values("corr", ascending=False)
-        .head(max_neighbors)
-        .copy()
-    )
+    return corr_filtered.sort_values("corr", ascending=False).head(max_neighbors).copy()
 
 
 def _calculate_weighted_ratings(
@@ -282,14 +271,14 @@ def _calculate_weighted_ratings(
 ) -> pd.DataFrame:
     """
     Calculate weighted ratings and filter recommendations.
-    
+
     Args:
         neighbor_ratings: DataFrame with neighbor ratings and correlations
         chosen_user: Target user ID
         rating: Rating DataFrame
         weighted_score_threshold: Minimum weighted score threshold
         top_n: Number of top recommendations
-    
+
     Returns:
         DataFrame with filtered and sorted recommendations
     """
@@ -297,38 +286,28 @@ def _calculate_weighted_ratings(
     possible_corr_cols = [c for c in neighbor_ratings.columns if "corr" in c]
     if not possible_corr_cols:
         return pd.DataFrame()
-    
+
     corr_col = possible_corr_cols[0]
-    neighbor_ratings["weighted_rating"] = (
-        neighbor_ratings["rating"] * neighbor_ratings[corr_col]
-    )
-    
+    neighbor_ratings["weighted_rating"] = neighbor_ratings["rating"] * neighbor_ratings[corr_col]
+
     # Aggregate by movie
     recommendation_df = (
-        neighbor_ratings
-        .groupby("movieId")
+        neighbor_ratings.groupby("movieId")
         .agg(weighted_rating=("weighted_rating", "mean"))
         .reset_index()
     )
-    
+
     # Remove movies user has already watched
     seen_ids = rating.loc[rating["userId"] == chosen_user, "movieId"].unique().tolist()
-    recommendation_df = recommendation_df[
-        ~recommendation_df["movieId"].isin(seen_ids)
-    ]
-    
+    recommendation_df = recommendation_df[~recommendation_df["movieId"].isin(seen_ids)]
+
     # Apply weighted score threshold
     recommendation_df = recommendation_df[
         recommendation_df["weighted_rating"] >= weighted_score_threshold
     ]
-    
+
     # Sort and limit to top N
-    return (
-        recommendation_df
-        .sort_values("weighted_rating", ascending=False)
-        .head(top_n)
-        .copy()
-    )
+    return recommendation_df.sort_values("weighted_rating", ascending=False).head(top_n).copy()
 
 
 def _build_final_recommendations(
@@ -337,20 +316,18 @@ def _build_final_recommendations(
 ) -> pd.DataFrame:
     """
     Build final recommendations with movie titles.
-    
+
     Args:
         recommendation_df: DataFrame with movie IDs and scores
         movie: Movie DataFrame with movieId and title
-    
+
     Returns:
         DataFrame with movie titles and scores
     """
     recommendation_df = recommendation_df.merge(
-        movie[["movieId", "title"]],
-        on="movieId",
-        how="left"
+        movie[["movieId", "title"]], on="movieId", how="left"
     )
-    
+
     return recommendation_df[["title", "weighted_rating"]].rename(
         columns={"title": "Film", "weighted_rating": "Score"}
     )
@@ -409,11 +386,11 @@ def finalize_user_based_from_cache(
     overlap_valid, overlap_error = validate_overlap_ratio(min_overlap_ratio_pct)
     if not overlap_valid:
         logger.warning(f"Invalid overlap ratio: {overlap_error}")
-    
+
     corr_valid, corr_error = validate_correlation_threshold(corr_threshold)
     if not corr_valid:
         logger.warning(f"Invalid correlation threshold: {corr_error}")
-    
+
     try:
         # Check precomputed status
         status = precomputed["status"]
@@ -431,7 +408,12 @@ def finalize_user_based_from_cache(
         top_users_ratings = precomputed["top_users_ratings"].copy()
 
         # Validate data availability
-        if len(movies_watched) == 0 or candidate_users_df.empty or corr_df.empty or top_users_ratings.empty:
+        if (
+            len(movies_watched) == 0
+            or candidate_users_df.empty
+            or corr_df.empty
+            or top_users_ratings.empty
+        ):
             return _create_error_response(
                 status="not_enough_data",
                 candidate_users_df=candidate_users_df,
@@ -452,14 +434,12 @@ def finalize_user_based_from_cache(
                     "candidate_users": len(candidate_users_df),
                     "after_overlap_users": 0,
                     "after_corr_users": 0,
-                    "used_neighbors": 0
+                    "used_neighbors": 0,
                 },
             )
 
         # Step 2: Apply correlation filter
-        corr_filtered = _apply_correlation_filter(
-            corr_df, good_overlap_users, corr_threshold
-        )
+        corr_filtered = _apply_correlation_filter(corr_df, good_overlap_users, corr_threshold)
         if corr_filtered.empty:
             return _create_error_response(
                 status="no_similar_users",
@@ -471,7 +451,7 @@ def finalize_user_based_from_cache(
                     "candidate_users": len(candidate_users_df),
                     "after_overlap_users": len(good_overlap_users),
                     "after_corr_users": 0,
-                    "used_neighbors": 0
+                    "used_neighbors": 0,
                 },
             )
 
@@ -488,15 +468,13 @@ def finalize_user_based_from_cache(
                     "candidate_users": len(candidate_users_df),
                     "after_overlap_users": len(good_overlap_users),
                     "after_corr_users": 0,
-                    "used_neighbors": 0
+                    "used_neighbors": 0,
                 },
             )
 
         # Step 4: Get neighbor movie ratings
         neighbor_ratings = top_users_ratings.merge(
-            corr_filtered[["userId", "corr"]],
-            on="userId",
-            how="inner"
+            corr_filtered[["userId", "corr"]], on="userId", how="inner"
         )
         if neighbor_ratings.empty:
             return _create_error_response(
@@ -510,7 +488,7 @@ def finalize_user_based_from_cache(
                     "candidate_users": len(candidate_users_df),
                     "after_overlap_users": len(good_overlap_users),
                     "after_corr_users": len(corr_filtered["userId"].unique()),
-                    "used_neighbors": 0
+                    "used_neighbors": 0,
                 },
             )
 
@@ -536,7 +514,7 @@ def finalize_user_based_from_cache(
             "candidate_users": len(candidate_users_df),
             "after_overlap_users": len(good_overlap_users),
             "after_corr_users": len(corr_filtered["userId"].unique()),
-            "used_neighbors": len(corr_filtered["userId"].unique())
+            "used_neighbors": len(corr_filtered["userId"].unique()),
         }
 
         return {
@@ -564,4 +542,3 @@ def finalize_user_based_from_cache(
             corr_df=pd.DataFrame(),
             error_message=str(e),
         )
-

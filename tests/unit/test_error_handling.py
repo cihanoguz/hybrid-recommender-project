@@ -92,55 +92,61 @@ class TestStreamlitErrorHandler:
 
     def test_decorator_handles_validation_error(self):
         """Test decorator handles ValidationError."""
+
         @streamlit_error_handler(show_user_message=False)
         def test_func():
             raise ValidationError("Validation failed")
-        
+
         result = test_func()
         assert result is None
 
     def test_decorator_handles_data_load_error(self):
         """Test decorator handles DataLoadError."""
+
         @streamlit_error_handler(show_user_message=False)
         def test_func():
             raise DataLoadError("Load failed")
-        
+
         result = test_func()
         assert result is None
 
     def test_decorator_handles_recommendation_error(self):
         """Test decorator handles RecommendationError."""
+
         @streamlit_error_handler(show_user_message=False)
         def test_func():
             raise RecommendationError("Recommendation failed")
-        
+
         result = test_func()
         assert result is None
 
     def test_decorator_handles_application_error(self):
         """Test decorator handles ApplicationError."""
+
         @streamlit_error_handler(show_user_message=False)
         def test_func():
             raise ApplicationError("App error")
-        
+
         result = test_func()
         assert result is None
 
     def test_decorator_handles_generic_exception(self):
         """Test decorator handles generic Exception."""
+
         @streamlit_error_handler(show_user_message=False)
         def test_func():
             raise ValueError("Generic error")
-        
+
         result = test_func()
         assert result is None
 
     def test_decorator_returns_value_on_success(self):
         """Test decorator returns value when no error occurs."""
+
         @streamlit_error_handler()
         def test_func():
             return 42
-        
+
         result = test_func()
         assert result == 42
 
@@ -150,25 +156,28 @@ class TestSafeExecute:
 
     def test_safe_execute_success(self):
         """Test safe_execute with successful execution."""
+
         def func():
             return "success"
-        
+
         result = safe_execute(func)
         assert result == "success"
 
     def test_safe_execute_returns_default_on_error(self):
         """Test safe_execute returns default value on error."""
+
         def func():
             raise ValueError("Error")
-        
+
         result = safe_execute(func, ApplicationError, default_return="default")
         assert result == "default"
 
     def test_safe_execute_logs_error(self):
         """Test safe_execute logs error."""
+
         def func():
             raise ApplicationError("Error")
-        
+
         result = safe_execute(func, ApplicationError, default_return=None, log_error=True)
         assert result is None
 
@@ -199,4 +208,3 @@ class TestHandleStreamlitException:
         error = ValueError("Generic error")
         handle_streamlit_exception(error, show_to_user=True)
         # Should not raise, just log and display
-

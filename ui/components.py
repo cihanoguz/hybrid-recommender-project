@@ -29,20 +29,20 @@ def render_header(logo_b64: Optional[str] = None) -> None:
     if logo_b64:
         logo_html = (
             f"<img src='data:image/png;base64,{logo_b64}' "
-            "style=\"height:40px; border-radius:.5rem; "
+            'style="height:40px; border-radius:.5rem; '
             "background:rgba(0,0,0,.15); padding:4px;"
-            "box-shadow:0 10px 20px rgba(0,0,0,0.4);\"/>"
+            'box-shadow:0 10px 20px rgba(0,0,0,0.4);"/>'
         )
     else:
         logo_html = (
-            "<div style=\"height:40px; width:40px; border-radius:.5rem; "
+            '<div style="height:40px; width:40px; border-radius:.5rem; '
             "background:rgba(0,0,0,.15); display:flex; align-items:center; "
             "justify-content:center; font-size:.6rem; font-weight:600; "
-            "box-shadow:0 10px 20px rgba(0,0,0,0.4); color:white;\">DH</div>"
+            'box-shadow:0 10px 20px rgba(0,0,0,0.4); color:white;">DH</div>'
         )
 
     datahub_banner_html = (
-        "<div style=\""
+        '<div style="'
         "background: linear-gradient(90deg, rgba(37,99,235,1) 0%, rgba(16,185,129,1) 100%);"
         "padding: .75rem 1rem;"
         "border-radius: .5rem;"
@@ -56,13 +56,11 @@ def render_header(logo_b64: Optional[str] = None) -> None:
         "margin-bottom: 1rem;"
         "border: 1px solid rgba(255,255,255,0.3);"
         "box-shadow: 0 20px 40px -10px rgba(0,0,0,0.4);"
-        "\">"
-
+        '">'
         # logo
         + logo_html +
-
         # badge
-        "<div style=\""
+        '<div style="'
         "background: rgba(255,255,255,0.15);"
         "border-radius: .5rem;"
         "padding: .5rem .75rem;"
@@ -71,16 +69,14 @@ def render_header(logo_b64: Optional[str] = None) -> None:
         "line-height: 1;"
         "display: flex;"
         "align-items: center;"
-        "\">"
+        '">'
         "DataHub"
         "</div>"
-
-        "<div style=\"flex:1; font-size:.9rem; font-weight:500;\">"
+        '<div style="flex:1; font-size:.9rem; font-weight:500;">'
         "In the real world, hybrid approach combines these three ideas: "
         "community taste (user-based), product similarity (item-based), "
         "content similarity (content-based)."
         "</div>"
-
         "</div>"
     )
 
@@ -183,6 +179,5 @@ def render_styles() -> None:
         }
         </style>
         """,
-        unsafe_allow_html=True
+        unsafe_allow_html=True,
     )
-

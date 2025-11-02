@@ -19,6 +19,7 @@ try:
     from error_handling import RecommendationError
 except ImportError:
     import logging
+
     logging.warning("config.py not found, using fallback")
     config = None
     RecommendationError = Exception
@@ -61,11 +62,12 @@ def content_based_recommender_cached(
         # Security: Sanitize input
         try:
             from security_utils import sanitize_user_input
+
             movie_title = sanitize_user_input(str(movie_title), max_length=500)
         except ImportError:
             # Fallback: basic sanitization
             movie_title = str(movie_title).strip()[:500]
-        
+
         # Validate inputs
         if not isinstance(movie_title, str) or not movie_title.strip():
             logger.warning(f"Invalid movie title: {movie_title}")
@@ -73,31 +75,31 @@ def content_based_recommender_cached(
                 "status": "invalid_title",
                 "reference_movie": movie_title,
                 "reference_genres": None,
-                "recommendations": pd.DataFrame()
+                "recommendations": pd.DataFrame(),
             }
-        
+
         if not isinstance(top_n, int) or top_n < 1:
             logger.warning(f"Invalid top_n value: {top_n}")
             if config:
                 top_n = config.DEFAULT_TOP_N
             else:
                 top_n = 5
-        
+
         # Does film exist?
-        if movie_title not in movie['title'].values:
+        if movie_title not in movie["title"].values:
             logger.warning(f"Movie not found: {movie_title}")
             return {
                 "status": "not_found",
                 "reference_movie": movie_title,
                 "reference_genres": None,
-                "recommendations": pd.DataFrame()
+                "recommendations": pd.DataFrame(),
             }
 
         # Find movie index
-        movie_idx = movie[movie['title'] == movie_title].index[0]
+        movie_idx = movie[movie["title"] == movie_title].index[0]
 
         # Genre information
-        ref_genres = movie.iloc[movie_idx]['genres']
+        ref_genres = movie.iloc[movie_idx]["genres"]
 
         # Validate cosine similarity matrix
         if movie_idx >= len(cosine_sim_genre):
@@ -106,14 +108,14 @@ def content_based_recommender_cached(
                 "status": "index_error",
                 "reference_movie": movie_title,
                 "reference_genres": ref_genres,
-                "recommendations": pd.DataFrame()
+                "recommendations": pd.DataFrame(),
             }
 
         # Get Cosine similarity scores
         sim_scores = list(enumerate(cosine_sim_genre[movie_idx]))
 
         # Sort by score, exclude itself
-        sim_scores = sorted(sim_scores, key=lambda x: x[1], reverse=True)[1: top_n + 1]
+        sim_scores = sorted(sim_scores, key=lambda x: x[1], reverse=True)[1 : top_n + 1]
 
         if not sim_scores:
             logger.warning(f"No similar movies found for: {movie_title}")
@@ -121,7 +123,7 @@ def content_based_recommender_cached(
                 "status": "no_similarities",
                 "reference_movie": movie_title,
                 "reference_genres": ref_genres,
-                "recommendations": pd.DataFrame()
+                "recommendations": pd.DataFrame(),
             }
 
         # Related movie indices
@@ -134,21 +136,23 @@ def content_based_recommender_cached(
                 "status": "index_error",
                 "reference_movie": movie_title,
                 "reference_genres": ref_genres,
-                "recommendations": pd.DataFrame()
+                "recommendations": pd.DataFrame(),
             }
 
         # Result DF
-        result_df = movie.iloc[movie_indices][['title', 'genres']].copy()
-        result_df['Similarity Score'] = [round(i[1], 3) for i in sim_scores]
-        result_df = result_df.rename(columns={'title': 'Film', 'genres': 'Genres'})
+        result_df = movie.iloc[movie_indices][["title", "genres"]].copy()
+        result_df["Similarity Score"] = [round(i[1], 3) for i in sim_scores]
+        result_df = result_df.rename(columns={"title": "Film", "genres": "Genres"})
 
-        logger.info(f"Content-based recommendations generated for '{movie_title}': {len(result_df)} results")
-        
+        logger.info(
+            f"Content-based recommendations generated for '{movie_title}': {len(result_df)} results"
+        )
+
         return {
             "status": "ok",
             "reference_movie": movie_title,
             "reference_genres": ref_genres,
-            "recommendations": result_df
+            "recommendations": result_df,
         }
     except Exception as e:
         logger.exception(f"Error in content_based_recommender_cached for '{movie_title}': {e}")
@@ -157,6 +161,5 @@ def content_based_recommender_cached(
             "error_message": str(e),
             "reference_movie": movie_title,
             "reference_genres": None,
-            "recommendations": pd.DataFrame()
+            "recommendations": pd.DataFrame(),
         }
-
