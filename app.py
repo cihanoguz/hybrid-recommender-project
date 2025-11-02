@@ -1,671 +1,244 @@
-# -------------------------------------------------
-# HYBRID RECOMMENDER STREAMLIT APP
-# -------------------------------------------------
+from pathlib import Path
+from typing import Tuple
 
-import streamlit as st
 import pandas as pd
-import numpy as np
-import pickle
-import os
-import base64
+import streamlit as st
 
-# -------------------------------------------------
-# PATH / GLOBAL SETTINGS
-# -------------------------------------------------
+from logging_config import get_logger
+from error_handling import DataLoadError, handle_streamlit_exception, handle_errors
 
-# Page config (call early)
-st.set_page_config(
-    page_title="Hybrid Recommender Case Study",
-    layout="wide"
+logger = get_logger(__name__)
+
+try:
+    import config
+    from utils import ValidationError
+except ImportError:
+    logger.warning("utils.py or config.py not found, using fallback configuration")
+    import config
+    ValidationError = Exception
+
+from data_loader import load_data
+from recommenders import (
+    content_based_recommender_cached,
+    finalize_item_based_from_cache,
+    finalize_user_based_from_cache,
+    precompute_for_user_itembased,
+    precompute_for_user_userbased,
 )
+from ui import img_to_base64, render_header, render_styles
 
-# Project directory
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+st.set_page_config(page_title="Hybrid Recommender Case Study", layout="wide")
 
-# Pickle file
-PICKLE_PATH = os.path.join(BASE_DIR, "data/prepare_data_demo.pkl")
+PICKLE_PATH = config.PICKLE_PATH
+LOGO_PATH = config.LOGO_PATH
 
-# Logo file (change name if needed)
-LOGO_PATH = os.path.join(BASE_DIR, "datahub_logo.jpeg")
-# example: LOGO_PATH = os.path.join(BASE_DIR, "datahub logo.jpeg")
-
-
-def img_to_base64(path):
-    with open(path, "rb") as f:
-        return base64.b64encode(f.read()).decode("utf-8")
-
-
-# Encode logo (silently fallback if logo doesn't exist)
 logo_b64 = None
-if os.path.exists(LOGO_PATH):
+if LOGO_PATH.exists():
     logo_b64 = img_to_base64(LOGO_PATH)
-
-
-# -------------------------------------------------
-# DATAHUB HEADER (top banner)
-# -------------------------------------------------
-def render_header():
-    # Make logo optional so it doesn't throw errors
     if logo_b64:
-        logo_html = (
-            f"<img src='data:image/png;base64,{logo_b64}' "
-            "style=\"height:40px; border-radius:.5rem; "
-            "background:rgba(0,0,0,.15); padding:4px;"
-            "box-shadow:0 10px 20px rgba(0,0,0,0.4);\"/>"
-        )
+        logger.info(f"Logo loaded successfully from: {LOGO_PATH}")
     else:
-        logo_html = (
-            "<div style=\"height:40px; width:40px; border-radius:.5rem; "
-            "background:rgba(0,0,0,.15); display:flex; align-items:center; "
-            "justify-content:center; font-size:.6rem; font-weight:600; "
-            "box-shadow:0 10px 20px rgba(0,0,0,0.4); color:white;\">DH</div>"
-        )
+        logger.warning(f"Logo file not found: {LOGO_PATH}, using fallback")
 
-    datahub_banner_html = (
-        "<div style=\""
-        "background: linear-gradient(90deg, rgba(37,99,235,1) 0%, rgba(16,185,129,1) 100%);"
-        "padding: .75rem 1rem;"
-        "border-radius: .5rem;"
-        "color: white;"
-        "font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Inter', Roboto, 'Segoe UI', sans-serif;"
-        "font-size: .9rem;"
-        "font-weight: 500;"
-        "display: flex;"
-        "align-items: center;"
-        "gap: .75rem;"
-        "margin-bottom: 1rem;"
-        "border: 1px solid rgba(255,255,255,0.3);"
-        "box-shadow: 0 20px 40px -10px rgba(0,0,0,0.4);"
-        "\">"
+render_header(logo_b64)
+render_styles()
 
-        # logo
-        + logo_html +
-
-        # badge
-        "<div style=\""
-        "background: rgba(255,255,255,0.15);"
-        "border-radius: .5rem;"
-        "padding: .5rem .75rem;"
-        "font-size: .8rem;"
-        "font-weight: 600;"
-        "line-height: 1;"
-        "display: flex;"
-        "align-items: center;"
-        "\">"
-        "DataHub"
-        "</div>"
-
-        # description
-        "<div style=\"flex:1; font-size:.9rem; font-weight:500;\">"
-        "In the real world, hybrid approach combines these three ideas: "
-        "community taste (user-based), product similarity (item-based), "
-        "content similarity (content-based)."
-        "</div>"
-
-        "</div>"
-    )
-
-    st.markdown(datahub_banner_html, unsafe_allow_html=True)
-
-
-render_header()
-
-
-# -------------------------------------------------
-# GENERAL CSS
-# -------------------------------------------------
-st.markdown(
-    """
-    <style>
-    .metric-card {
-        background-color: #ffffff;
-        border-radius: 0.75rem;
-        padding: 0.9rem 1rem;
-        border: 1px solid rgba(0,0,0,0.07);
-        box-shadow: 0 12px 24px -12px rgba(0,0,0,0.20);
-        margin-bottom: 1rem;
-        min-height: 5.5rem;
-    }
-    .metric-title {
-        font-weight: 500;
-        font-size: .8rem;
-        color: #6b7280;
-        margin-bottom: .25rem;
-    }
-    .metric-value {
-        font-size: 1.15rem;
-        font-weight: 600;
-        color: #111827;
-        line-height: 1.4rem;
-        word-break: break-word;
-    }
-
-    .header-badge-wrap {
-        display: flex;
-        flex-wrap: wrap;
-        gap: .5rem 1rem;
-        margin-bottom: .75rem;
-    }
-    .header-badge {
-        background: #fdf8c7;
-        color: #111827;
-        display: inline-block;
-        padding: .4rem .6rem;
-        border-radius: .25rem;
-        font-size: .8rem;
-        font-weight: 500;
-        border: 1px solid #e2e0a8;
-    }
-
-    table.var-table {
-        border-collapse: collapse;
-        width: 100%;
-        margin-bottom: 2rem;
-        font-size: 0.9rem;
-        background: #ffffff;
-        color: #111827;
-    }
-    table.var-table th {
-        text-align: left;
-        background: #fdf8c7;
-        color: #111827;
-        font-weight: 600;
-        padding: .5rem .6rem;
-        border: 1px solid #d4d4d4;
-        white-space: nowrap;
-    }
-    table.var-table td {
-        padding: .5rem .6rem;
-        border: 1px solid #d4d4d4;
-        vertical-align: top;
-        background: #ffffff;
-        color: #111827;
-    }
-
-    table.stage-table {
-        border-collapse: collapse;
-        width: 100%;
-        margin-top: 1rem;
-        font-size: .85rem;
-        background: #ffffff;
-        color: #111827;
-    }
-    table.stage-table th {
-        text-align: left;
-        background: #eef2ff;
-        color: #111827;
-        font-weight: 600;
-        padding: .5rem .6rem;
-        border: 1px solid #c7c9df;
-        white-space: nowrap;
-    }
-    table.stage-table td {
-        padding: .5rem .6rem;
-        border: 1px solid #c7c9df;
-        vertical-align: top;
-        background: #ffffff;
-        color: #111827;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True
-)
-
-
-# -------------------------------------------------
-# LOAD DATA
-# -------------------------------------------------
-@st.cache_resource(show_spinner=True)
-def load_data(pickle_path: str):
-    with open(pickle_path, "rb") as f:
-        data = pickle.load(f)
-
-    movie = data["movie"]
-    rating = data["rating"]
-    df_full = data["df_full"]
-    common_movies = data["common_movies"]
-    user_movie_df = data["user_movie_df"]
-    cosine_sim_genre = data["cosine_sim_genre"]
-
-    # Get user ID list from matrix
-    all_user_ids = user_movie_df.index.tolist()
-
-    return movie, rating, df_full, common_movies, user_movie_df, all_user_ids, cosine_sim_genre
-
-
-movie, rating, df_full, common_movies, user_movie_df, all_user_ids, cosine_sim_genre = load_data(PICKLE_PATH)
-
-
-# -------------------------------------------------
-# USER-BASED PRE-COMPUTATION
-# -------------------------------------------------
-@st.cache_data(show_spinner=False)
-def precompute_for_user_userbased(chosen_user: int):
-    # Does user exist?
-    if chosen_user not in user_movie_df.index:
-        return {
-            "status": "no_user",
-            "movies_watched": [],
-            "candidate_users_df": pd.DataFrame(),
-            "corr_df": pd.DataFrame(),
-            "top_users_ratings": pd.DataFrame(),
+# JavaScript for tab persistence after Streamlit rerun
+st.markdown("""
+<script>
+(function() {
+    'use strict';
+    
+    const win = window.self !== window.top ? window.top : window.self;
+    const doc = win.document;
+    
+    let isTabMaintaining = false;
+    let tabCheckAttempts = 0;
+    const maxAttempts = 50;
+    let lastCheckTime = 0;
+    const checkInterval = 25;
+    
+    function forceSelectProjectTasksTab() {
+        let tabButtons = doc.querySelectorAll('button[data-baseweb="tab"]');
+        if (tabButtons.length === 0) {
+            tabButtons = doc.querySelectorAll('[role="tab"]');
         }
-
-    # Movies watched by target user
-    row = user_movie_df.loc[[chosen_user]]
-    movies_watched = row.columns[row.notna().any()].to_list()
-
-    if len(movies_watched) == 0:
-        return {
-            "status": "no_movies",
-            "movies_watched": [],
-            "candidate_users_df": pd.DataFrame(),
-            "corr_df": pd.DataFrame(),
-            "top_users_ratings": pd.DataFrame(),
+        if (tabButtons.length === 0) {
+            tabButtons = doc.querySelectorAll('button[class*="tab"]');
         }
-
-    # Sub-matrix based on target user's watched movies
-    movies_watched_df = user_movie_df[movies_watched].copy()
-
-    # How many of these movies each other user has watched
-    user_movie_count_series = movies_watched_df.notnull().sum(axis=1)
-
-    candidate_users_df = (
-        user_movie_count_series
-        .reset_index()
-        .rename(columns={"index": "userId", 0: "movie_count"})
-    )
-    candidate_users_df.columns = ["userId", "movie_count"]
-
-    candidate_users_df = candidate_users_df[candidate_users_df["userId"] != chosen_user].copy()
-
-    # Calculate correlation
-    base_vector = user_movie_df.loc[chosen_user]
-    corr_series = movies_watched_df.T.corrwith(base_vector).dropna()
-
-    corr_df = (
-        corr_series
-        .reset_index()
-        .rename(columns={"index": "userId", 0: "corr"})
-    )
-    corr_df.columns = ["userId", "corr"]
-    corr_df = corr_df[corr_df["userId"] != chosen_user].copy()
-
-    if corr_df.empty:
-        return {
-            "status": "no_corr",
-            "movies_watched": movies_watched,
-            "candidate_users_df": candidate_users_df,
-            "corr_df": corr_df,
-            "top_users_ratings": pd.DataFrame(),
+        
+        if (tabButtons.length >= 3) {
+            const thirdTab = tabButtons[2];
+            const isSelected = thirdTab.getAttribute('aria-selected') === 'true' || 
+                              thirdTab.classList.contains('stTabs-1a2j6c5') ||
+                              thirdTab.getAttribute('aria-current') === 'true';
+            
+            if (!isSelected) {
+                thirdTab.focus();
+                thirdTab.click();
+                const clickEvent = new MouseEvent('click', {
+                    bubbles: true,
+                    cancelable: true,
+                    view: win
+                });
+                thirdTab.dispatchEvent(clickEvent);
+                tabButtons.forEach((btn, idx) => {
+                    if (idx === 2) {
+                        btn.setAttribute('aria-selected', 'true');
+                        btn.classList.add('stTabs-1a2j6c5');
+                    } else {
+                        btn.setAttribute('aria-selected', 'false');
+                    }
+                });
+                return true;
+            }
+            return true;
         }
-
-    # Ratings from candidate neighbors
-    top_users_ratings = corr_df.merge(
-        rating[["userId", "movieId", "rating"]],
-        on="userId",
-        how="inner"
-    )
-
-    if top_users_ratings.empty:
-        return {
-            "status": "no_ratings_from_neighbors",
-            "movies_watched": movies_watched,
-            "candidate_users_df": candidate_users_df,
-            "corr_df": corr_df,
-            "top_users_ratings": top_users_ratings,
-        }
-
-    return {
-        "status": "ok",
-        "movies_watched": movies_watched,
-        "candidate_users_df": candidate_users_df,
-        "corr_df": corr_df,
-        "top_users_ratings": top_users_ratings,
+        return false;
     }
-
-
-def finalize_user_based_from_cache(
-    precomputed,
-    min_overlap_ratio_pct: float,
-    corr_threshold: float,
-    max_neighbors: int,
-    weighted_score_threshold: float,
-    top_n: int,
-    chosen_user: int
-):
-    status = precomputed["status"]
-    if status != "ok":
-        return {
-            "status": status,
-            "recommendations": pd.DataFrame(),
-            "debug_info": {},
-            "dbg_candidate_users_df": precomputed.get("candidate_users_df", pd.DataFrame()),
-            "dbg_corr_df": precomputed.get("corr_df", pd.DataFrame()),
-            "dbg_corr_filtered": pd.DataFrame(),
-            "dbg_neighbor_ratings": pd.DataFrame(),
+    
+    function checkAndSelectTab() {
+        const now = Date.now();
+        if (now - lastCheckTime < checkInterval) {
+            return;
         }
-
-    movies_watched = precomputed["movies_watched"]
-    candidate_users_df = precomputed["candidate_users_df"].copy()
-    corr_df = precomputed["corr_df"].copy()
-    top_users_ratings = precomputed["top_users_ratings"].copy()
-
-    if len(movies_watched) == 0 or candidate_users_df.empty or corr_df.empty or top_users_ratings.empty:
-        return {
-            "status": "not_enough_data",
-            "recommendations": pd.DataFrame(),
-            "debug_info": {},
-            "dbg_candidate_users_df": candidate_users_df,
-            "dbg_corr_df": corr_df,
-            "dbg_corr_filtered": pd.DataFrame(),
-            "dbg_neighbor_ratings": pd.DataFrame(),
+        lastCheckTime = now;
+        
+        if (win.sessionStorage.getItem('stayOnProjectTasks') === 'true') {
+            if (!isTabMaintaining) {
+                isTabMaintaining = true;
+                tabCheckAttempts = 0;
+            }
+            
+            const success = forceSelectProjectTasksTab();
+            
+            if (success) {
+                setTimeout(function() {
+                    if (forceSelectProjectTasksTab()) {
+                        win.sessionStorage.removeItem('stayOnProjectTasks');
+                        isTabMaintaining = false;
+                        tabCheckAttempts = 0;
+                    }
+                }, 100);
+            } else if (tabCheckAttempts < maxAttempts) {
+                tabCheckAttempts++;
+                setTimeout(checkAndSelectTab, checkInterval);
+            } else {
+                win.sessionStorage.removeItem('stayOnProjectTasks');
+                isTabMaintaining = false;
+                tabCheckAttempts = 0;
+            }
+        } else {
+            isTabMaintaining = false;
+            tabCheckAttempts = 0;
         }
-
-    # 1. overlap filter
-    threshold_common = len(movies_watched) * (min_overlap_ratio_pct / 100.0)
-
-    good_overlap_users = candidate_users_df[
-        candidate_users_df["movie_count"] >= threshold_common
-    ]["userId"]
-
-    if good_overlap_users.empty:
-        return {
-            "status": "no_candidates_after_overlap",
-            "recommendations": pd.DataFrame(),
-            "debug_info": {
-                "movies_watched": len(movies_watched),
-                "candidate_users": len(candidate_users_df),
-                "after_overlap_users": 0,
-                "after_corr_users": 0,
-                "used_neighbors": 0
-            },
-            "dbg_candidate_users_df": candidate_users_df,
-            "dbg_corr_df": corr_df,
-            "dbg_corr_filtered": pd.DataFrame(),
-            "dbg_neighbor_ratings": pd.DataFrame(),
-        }
-
-    # 2. correlation filter
-    corr_filtered = corr_df[
-        (corr_df["userId"].isin(good_overlap_users)) &
-        (corr_df["corr"] >= corr_threshold)
-    ].copy()
-
-    if corr_filtered.empty:
-        return {
-            "status": "no_similar_users",
-            "recommendations": pd.DataFrame(),
-            "debug_info": {
-                "movies_watched": len(movies_watched),
-                "candidate_users": len(candidate_users_df),
-                "after_overlap_users": len(good_overlap_users),
-                "after_corr_users": 0,
-                "used_neighbors": 0
-            },
-            "dbg_candidate_users_df": candidate_users_df,
-            "dbg_corr_df": corr_df,
-            "dbg_corr_filtered": corr_filtered,
-            "dbg_neighbor_ratings": pd.DataFrame(),
-        }
-
-    # 3. max_neighbors limit
-    corr_filtered = (
-        corr_filtered
-        .sort_values("corr", ascending=False)
-        .head(max_neighbors)
-        .copy()
-    )
-
-    if corr_filtered.empty:
-        return {
-            "status": "no_similar_users_after_limit",
-            "recommendations": pd.DataFrame(),
-            "debug_info": {
-                "movies_watched": len(movies_watched),
-                "candidate_users": len(candidate_users_df),
-                "after_overlap_users": len(good_overlap_users),
-                "after_corr_users": 0,
-                "used_neighbors": 0
-            },
-            "dbg_candidate_users_df": candidate_users_df,
-            "dbg_corr_df": corr_df,
-            "dbg_corr_filtered": corr_filtered,
-            "dbg_neighbor_ratings": pd.DataFrame(),
-        }
-
-    # 4. get neighbor movie ratings
-    neighbor_ratings = top_users_ratings.merge(
-        corr_filtered[["userId", "corr"]],
-        on="userId",
-        how="inner"
-    )
-
-    if neighbor_ratings.empty:
-        return {
-            "status": "no_neighbor_ratings_after_filter",
-            "recommendations": pd.DataFrame(),
-            "debug_info": {
-                "movies_watched": len(movies_watched),
-                "candidate_users": len(candidate_users_df),
-                "after_overlap_users": len(good_overlap_users),
-                "after_corr_users": len(corr_filtered["userId"].unique()),
-                "used_neighbors": 0
-            },
-            "dbg_candidate_users_df": candidate_users_df,
-            "dbg_corr_df": corr_df,
-            "dbg_corr_filtered": corr_filtered,
-            "dbg_neighbor_ratings": neighbor_ratings,
-        }
-
-    # 5. weighting = rating * corr
-    possible_corr_cols = [c for c in neighbor_ratings.columns if "corr" in c]
-    if not possible_corr_cols:
-        return {
-            "status": "no_corr_column_after_merge",
-            "recommendations": pd.DataFrame(),
-            "debug_info": {},
-            "dbg_candidate_users_df": candidate_users_df,
-            "dbg_corr_df": corr_df,
-            "dbg_corr_filtered": corr_filtered,
-            "dbg_neighbor_ratings": neighbor_ratings,
-        }
-
-    corr_col = possible_corr_cols[0]
-    neighbor_ratings["weighted_rating"] = (
-        neighbor_ratings["rating"] * neighbor_ratings[corr_col]
-    )
-
-    recommendation_df = (
-        neighbor_ratings
-        .groupby("movieId")
-        .agg(weighted_rating=("weighted_rating", "mean"))
-        .reset_index()
-    )
-
-    # Remove movies user has already watched
-    seen_ids = rating.loc[rating["userId"] == chosen_user, "movieId"].unique().tolist()
-    recommendation_df = recommendation_df[
-        ~recommendation_df["movieId"].isin(seen_ids)
-    ]
-
-    # apply weighted score threshold
-    recommendation_df = recommendation_df[
-        recommendation_df["weighted_rating"] >= weighted_score_threshold
-    ]
-
-    # sort + top_n
-    recommendation_df = (
-        recommendation_df
-        .sort_values("weighted_rating", ascending=False)
-        .head(top_n)
-        .copy()
-    )
-
-    # add movie names
-    recommendation_df = recommendation_df.merge(
-        movie[["movieId", "title"]],
-        on="movieId",
-        how="left"
-    )
-
-    out_df = recommendation_df[["title", "weighted_rating"]].rename(
-        columns={"title": "Film", "weighted_rating": "Score"}
-    )
-
-    debug_info = {
-        "movies_watched": len(movies_watched),
-        "candidate_users": len(candidate_users_df),
-        "after_overlap_users": len(good_overlap_users),
-        "after_corr_users": len(corr_filtered["userId"].unique()),
-        "used_neighbors": len(corr_filtered["userId"].unique())
     }
-
-    return {
-        "status": "ok",
-        "recommendations": out_df,
-        "debug_info": debug_info,
-        "dbg_candidate_users_df": candidate_users_df,
-        "dbg_corr_df": corr_df,
-        "dbg_corr_filtered": corr_filtered,
-        "dbg_neighbor_ratings": neighbor_ratings,
+    
+    function startTabMonitoring() {
+        checkAndSelectTab();
+        setInterval(checkAndSelectTab, checkInterval);
     }
-
-
-# -------------------------------------------------
-# ITEM-BASED
-# -------------------------------------------------
-@st.cache_data(show_spinner=False)
-def precompute_for_user_itembased(chosen_user: int):
-    # Movies user gave 5 stars to
-    user_5 = rating[
-        (rating["userId"] == chosen_user) &
-        (rating["rating"] == 5.0)
-    ]
-
-    if user_5.empty:
-        return {
-            "status": "no_five_star",
-            "reference_movie": None,
-            "similarity_df": pd.DataFrame()
-        }
-
-    # most recently given 5★
-    if "timestamp" in user_5.columns:
-        last_fav = user_5.sort_values("timestamp", ascending=False).iloc[0]
-    else:
-        last_fav = user_5.iloc[0]
-
-    ref_movie_id = last_fav["movieId"]
-    ref_title_arr = movie.loc[movie["movieId"] == ref_movie_id, "title"].values
-    if len(ref_title_arr) == 0:
-        return {
-            "status": "no_title",
-            "reference_movie": None,
-            "similarity_df": pd.DataFrame()
-        }
-
-    ref_title = ref_title_arr[0]
-
-    # item-based correlation: between movies
-    if ref_title not in user_movie_df.columns:
-        return {
-            "status": "not_in_matrix",
-            "reference_movie": ref_title,
-            "similarity_df": pd.DataFrame()
-        }
-
-    ref_vector = user_movie_df[ref_title]
-    sims = user_movie_df.corrwith(ref_vector).dropna()  # movie-movie similarity
-    sims = sims[sims.index != ref_title]  # remove itself
-
-    similarity_df = (
-        sims.sort_values(ascending=False)
-        .reset_index()
-        .rename(columns={"index": "Similar Film", 0: "Similarity"})
-    )
-
-    return {
-        "status": "ok",
-        "reference_movie": ref_title,
-        "similarity_df": similarity_df
+    
+    if (doc.readyState === 'loading') {
+        doc.addEventListener('DOMContentLoaded', startTabMonitoring);
+    } else {
+        startTabMonitoring();
     }
-
-
-def finalize_item_based_from_cache(precomputed_item, top_n_item: int):
-    status = precomputed_item["status"]
-    if status != "ok":
-        return status, None, pd.DataFrame()
-
-    ref_movie = precomputed_item["reference_movie"]
-    sim_df_all = precomputed_item["similarity_df"]
-
-    sim_df_head = sim_df_all.head(top_n_item).copy()
-
-    return "ok", ref_movie, sim_df_head
-
-
-# -------------------------------------------------
-# CONTENT-BASED
-# -------------------------------------------------
-@st.cache_data(show_spinner=False)
-def content_based_recommender_cached(movie_title: str, top_n: int):
-    # Does film exist?
-    if movie_title not in movie['title'].values:
-        return {
-            "status": "not_found",
-            "reference_movie": movie_title,
-            "reference_genres": None,
-            "recommendations": pd.DataFrame()
+    
+    const observer = new MutationObserver(function(mutations) {
+        if (win.sessionStorage.getItem('stayOnProjectTasks') === 'true') {
+            checkAndSelectTab();
         }
+    });
+    
+    observer.observe(doc.body, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: ['aria-selected', 'aria-current', 'class', 'data-baseweb']
+    });
+    
+    doc.addEventListener('click', function(e) {
+        let target = e.target;
+        let button = null;
+        
+        while (target && target !== doc.body) {
+            if (target.tagName === 'BUTTON') {
+                const text = target.textContent || target.innerText || '';
+                if (text.includes('Calculate Recommendations')) {
+                    button = target;
+                    break;
+                }
+            }
+            target = target.parentElement;
+        }
+        
+        if (button) {
+            win.sessionStorage.setItem('stayOnProjectTasks', 'true');
+            isTabMaintaining = false;
+            setTimeout(function() {
+                for (let i = 0; i < 10; i++) {
+                    setTimeout(function() {
+                        checkAndSelectTab();
+                    }, i * 50);
+                }
+            }, 10);
+        }
+    }, true);
+})();
+</script>
+""", unsafe_allow_html=True)
 
-    # Find movie index
-    movie_idx = movie[movie['title'] == movie_title].index[0]
+# Load data
+movie = None
+rating = None
+df_full = None
+common_movies = None
+user_movie_df = None
+all_user_ids = None
+cosine_sim_genre = None
 
-    # Genre information
-    ref_genres = movie.iloc[movie_idx]['genres']
+try:
+    with handle_errors(DataLoadError, "Data loading error", log_details=True):
+        movie, rating, df_full, common_movies, user_movie_df, all_user_ids, cosine_sim_genre = load_data(PICKLE_PATH)
+        logger.info("Data loaded successfully")
+except DataLoadError as e:
+    handle_streamlit_exception(e, show_to_user=True)
+    st.info("Please check that data/prepare_data_demo.pkl file exists.")
+    st.code(f"Technical details: {str(e)}", language="text")
+    st.stop()
+except Exception as e:
+    handle_streamlit_exception(e, show_to_user=True)
+    st.stop()
 
-    # Get Cosine similarity scores
-    sim_scores = list(enumerate(cosine_sim_genre[movie_idx]))
-
-    # Sort by score, exclude itself
-    sim_scores = sorted(sim_scores, key=lambda x: x[1], reverse=True)[1: top_n + 1]
-
-    # Related movie indices
-    movie_indices = [i[0] for i in sim_scores]
-
-    # Result DF
-    result_df = movie.iloc[movie_indices][['title', 'genres']].copy()
-    result_df['Similarity Score'] = [round(i[1], 3) for i in sim_scores]
-    result_df = result_df.rename(columns={'title': 'Film', 'genres': 'Genres'})
-
-    return {
-        "status": "ok",
-        "reference_movie": movie_title,
-        "reference_genres": ref_genres,
-        "recommendations": result_df
-    }
+if df_full is None or common_movies is None or user_movie_df is None:
+    st.error("❌ Data could not be loaded. Application cannot run.")
+    st.stop()
 
 
-# -------------------------------------------------
-# HELPER FUNCTION
-# -------------------------------------------------
-def get_matrix_shape(df):
+def get_matrix_shape(df: pd.DataFrame) -> Tuple[int, int]:
+    """Get DataFrame shape."""
     return df.shape
 
+# Tabs
+if "active_tab" not in st.session_state:
+    st.session_state.active_tab = "business-problem"
+if "button_clicked" not in st.session_state:
+    st.session_state.button_clicked = False
 
-# -------------------------------------------------
-# TABS
-# -------------------------------------------------
-tab_problem, tab_dataset, tab_tasks = st.tabs([
-    "1. Business Problem",
-    "2. Dataset Story",
-    "3. Project Tasks"
-])
+query_params = st.query_params
+if "page" in query_params:
+    url_page = query_params.get("page", ["business-problem"])
+    if isinstance(url_page, list):
+        url_page = url_page[0]
+    previous_tab = st.session_state.get("active_tab", "business-problem")
+    if st.session_state.get("active_tab") != url_page:
+        st.session_state.active_tab = url_page
+        if previous_tab == "project-tasks" and url_page != "project-tasks":
+            st.session_state.button_clicked = False
 
-# -------------------------------------------------
-# TAB 1
-# -------------------------------------------------
+tab_names = ["1. Business Problem", "2. Dataset Story", "3. Project Tasks"]
+tab_problem, tab_dataset, tab_tasks = st.tabs(tab_names)
 with tab_problem:
     st.title("Case Study: Hybrid Recommender Project")
     st.header("Business Problem")
@@ -714,9 +287,6 @@ with tab_problem:
         "These three approaches are usually combined into one package in real life. This is what we call a hybrid system."
     )
 
-# -------------------------------------------------
-# TAB 2
-# -------------------------------------------------
 with tab_dataset:
     st.title("Dataset Story")
 
@@ -881,9 +451,6 @@ with tab_dataset:
         "Removing movies with few ratings both speeds up calculations and makes similarity measurements more reliable."
     )
 
-# -------------------------------------------------
-# TAB 3 (LIVE DEMO)
-# -------------------------------------------------
 with tab_tasks:
     st.title("Project Tasks and Live Recommendation Engine")
 
@@ -908,7 +475,7 @@ with tab_tasks:
         (user-based + item-based + content-based),
         we consider that film more reliable.
         """
-    )
+)
 
     # LEFT and RIGHT columns
     left_col, right_col = st.columns([1, 2])
@@ -916,12 +483,16 @@ with tab_tasks:
     with left_col:
         st.markdown("### Parameters / Control Panel")
 
+        if all_user_ids is not None:
+            st.caption(f"📊 Total users in dataset: {len(all_user_ids)}")
+            st.caption(f"💡 Example User IDs: {', '.join(map(str, sorted(all_user_ids)[:10]))}...")
+
         chosen_user = st.number_input(
             "Target User ID",
             min_value=1,
-            value=108170,
+            value=config.DEFAULT_USER_ID,
             step=1,
-            help="User ID to analyze"
+            help=f"User ID to analyze. Available user IDs range from {min(all_user_ids) if all_user_ids is not None else 1} to {max(all_user_ids) if all_user_ids is not None else 1}"
         )
 
         rec_type = st.radio(
@@ -937,59 +508,57 @@ with tab_tasks:
 
         st.markdown("---")
 
-        # Parameter blocks
         if rec_type.startswith("User-Based"):
             st.markdown("#### 🧑‍🤝‍🧑 User-Based Parameters")
 
             min_overlap_ratio_pct = st.slider(
                 "Common viewing percentage (%)",
-                min_value=0,
-                max_value=100,
-                value=60,
-                step=5,
+                min_value=config.MIN_OVERLAP_RATIO,
+                max_value=config.MAX_OVERLAP_RATIO,
+                value=config.DEFAULT_OVERLAP_RATIO_PCT,
+                step=5.0,
                 help="Consider users who watched at least 60% of the films I watched as 'similar'."
             )
 
             corr_threshold = st.slider(
                 "Correlation threshold (taste similarity)",
-                min_value=0.0,
-                max_value=1.0,
-                value=0.65,
+                min_value=config.MIN_CORR_THRESHOLD,
+                max_value=config.MAX_CORR_THRESHOLD,
+                value=config.DEFAULT_CORR_THRESHOLD,
                 step=0.05,
                 help="0.65 and above: really similar to me."
             )
 
             max_neighbors = st.slider(
                 "Maximum neighbor count",
-                min_value=1,
-                max_value=200,
-                value=7,
+                min_value=config.MIN_NEIGHBORS,
+                max_value=config.MAX_NEIGHBORS,
+                value=config.DEFAULT_MAX_NEIGHBORS,
                 step=1,
                 help="How many similar users should we use?"
             )
 
             weighted_score_threshold = st.slider(
                 "Weighted score threshold",
-                min_value=0.0,
-                max_value=5.0,
-                value=3.5,
+                min_value=config.MIN_WEIGHTED_SCORE,
+                max_value=config.MAX_WEIGHTED_SCORE,
+                value=config.DEFAULT_WEIGHTED_SCORE_THRESHOLD,
                 step=0.1,
                 help="Recommend if (corr * rating) average is above 3.5."
             )
 
             top_n_user_based = st.slider(
                 "How many films to recommend? (Top-N)",
-                min_value=1,
-                max_value=10,
-                value=5,
+                min_value=config.MIN_TOP_N,
+                max_value=config.MAX_TOP_N,
+                value=config.DEFAULT_TOP_N,
                 step=1,
                 help="How many films to list?"
             )
 
-            # default others
-            top_n_item_based = 5
-            top_n_content = 5
-            hybrid_top_n = 5
+            top_n_item_based = config.DEFAULT_TOP_N
+            top_n_content = config.DEFAULT_TOP_N
+            hybrid_top_n = config.DEFAULT_TOP_N
             selected_movie_title = None
 
         elif rec_type.startswith("Item-Based"):
@@ -997,34 +566,40 @@ with tab_tasks:
 
             top_n_item_based = st.slider(
                 "How many similar films to show?",
-                min_value=1,
-                max_value=20,
-                value=5,
+                min_value=config.MIN_TOP_N,
+                max_value=config.MAX_TOP_N,
+                value=config.DEFAULT_TOP_N,
                 step=1,
                 help="Show the top N most similar films for the film the user last rated 5⭐."
             )
 
-            # default others
-            min_overlap_ratio_pct = 60
-            corr_threshold = 0.65
-            max_neighbors = 7
-            weighted_score_threshold = 3.5
-            top_n_user_based = 5
-            top_n_content = 5
-            hybrid_top_n = 5
+            min_overlap_ratio_pct = config.DEFAULT_OVERLAP_RATIO_PCT
+            corr_threshold = config.DEFAULT_CORR_THRESHOLD
+            max_neighbors = config.DEFAULT_MAX_NEIGHBORS
+            weighted_score_threshold = config.DEFAULT_WEIGHTED_SCORE_THRESHOLD
+            top_n_user_based = config.DEFAULT_TOP_N
+            top_n_content = config.DEFAULT_TOP_N
+            hybrid_top_n = config.DEFAULT_TOP_N
             selected_movie_title = None
 
         elif rec_type.startswith("Content-Based"):
             st.markdown("#### 🏷️ Content-Based Parameters")
 
-            # quick search box
-            search_term = st.text_input(
+            try:
+                from security_utils import sanitize_user_input
+            except ImportError:
+                logger.warning("security_utils not available, using basic input validation")
+                sanitize_user_input = lambda x, **kwargs: x.strip()[:200] if x else ""
+
+            search_term_raw = st.text_input(
                 "Search / type film (for autocomplete):",
                 value="",
-                help="Type first few letters. The box below will filter accordingly."
+                help="Type first few letters. The box below will filter accordingly.",
+                max_chars=200
             )
 
-            # filtered film list
+            search_term = sanitize_user_input(search_term_raw, max_length=200)
+
             if search_term.strip():
                 filtered_titles = sorted(
                     [t for t in movie['title'].tolist() if search_term.lower() in t.lower()]
@@ -1040,61 +615,75 @@ with tab_tasks:
 
             top_n_content = st.slider(
                 "How many similar films to show?",
-                min_value=1,
-                max_value=20,
-                value=5,
+                min_value=config.MIN_TOP_N,
+                max_value=config.MAX_TOP_N,
+                value=config.DEFAULT_TOP_N,
                 step=1
             )
 
-            # default others
-            min_overlap_ratio_pct = 60
-            corr_threshold = 0.65
-            max_neighbors = 7
-            weighted_score_threshold = 3.5
-            top_n_user_based = 5
-            top_n_item_based = 5
-            hybrid_top_n = 5
+            min_overlap_ratio_pct = config.DEFAULT_OVERLAP_RATIO_PCT
+            corr_threshold = config.DEFAULT_CORR_THRESHOLD
+            max_neighbors = config.DEFAULT_MAX_NEIGHBORS
+            weighted_score_threshold = config.DEFAULT_WEIGHTED_SCORE_THRESHOLD
+            top_n_user_based = config.DEFAULT_TOP_N
+            top_n_item_based = config.DEFAULT_TOP_N
+            hybrid_top_n = config.DEFAULT_TOP_N
 
         else:  # Hybrid
             st.markdown("#### 🔀 Hybrid Parameters")
 
-            # User-Based defaults
-            min_overlap_ratio_pct = 60
-            corr_threshold = 0.65
-            max_neighbors = 7
-            weighted_score_threshold = 3.5
-            top_n_user_based = 5
-
-            # Item-Based defaults
-            top_n_item_based = 5
-
-            # Content-Based defaults
-            top_n_content = 5
+            min_overlap_ratio_pct = config.DEFAULT_OVERLAP_RATIO_PCT
+            corr_threshold = config.DEFAULT_CORR_THRESHOLD
+            max_neighbors = config.DEFAULT_MAX_NEIGHBORS
+            weighted_score_threshold = config.DEFAULT_WEIGHTED_SCORE_THRESHOLD
+            top_n_user_based = config.DEFAULT_TOP_N
+            top_n_item_based = config.DEFAULT_TOP_N
+            top_n_content = config.DEFAULT_TOP_N
             selected_movie_title = None
 
             hybrid_top_n = st.slider(
                 "How many films should Hybrid show in total?",
-                min_value=3,
-                max_value=15,
-                value=5,
+                min_value=config.MIN_TOP_N,
+                max_value=config.MAX_TOP_N,
+                value=config.DEFAULT_TOP_N,
                 step=1,
                 help="List the top N films from common/strong candidates of all three approaches."
             )
 
-        run_button = st.button("🎬 Calculate Recommendations", type="primary")
+        is_project_tasks_page = True
+        st.session_state.active_tab = "project-tasks"
+        
+        st.markdown("""
+        <script>
+        sessionStorage.setItem('stayOnProjectTasks', 'true');
+        </script>
+        """, unsafe_allow_html=True)
+            
+        run_button = st.button("🎬 Calculate Recommendations", type="primary", key="calculate_button")
+        
+        if run_button:
+            st.session_state.button_clicked = True
+            st.session_state.active_tab = "project-tasks"
+            st.markdown("""
+            <script>
+            if (typeof sessionStorage !== 'undefined') {
+                sessionStorage.setItem('stayOnProjectTasks', 'true');
+            }
+            </script>
+            """, unsafe_allow_html=True)
 
-    # RIGHT PANEL - RESULT
     with right_col:
         st.markdown("### Solution Output")
+        show_results = run_button or (is_project_tasks_page and st.session_state.button_clicked)
 
-        if not run_button:
+        if not show_results:
             st.info("Select parameters and press the button.")
         else:
-            # USER-BASED
-            # USER-BASED
             if rec_type.startswith("User-Based"):
                 with st.spinner("Calculating User-Based..."):
-                    pre_u = precompute_for_user_userbased(chosen_user)
+                    pre_u = precompute_for_user_userbased(
+                        chosen_user, all_user_ids, user_movie_df, rating
+                    )
                     result_user = finalize_user_based_from_cache(
                         precomputed=pre_u,
                         min_overlap_ratio_pct=min_overlap_ratio_pct,
@@ -1102,24 +691,22 @@ with tab_tasks:
                         max_neighbors=max_neighbors,
                         weighted_score_threshold=weighted_score_threshold,
                         top_n=top_n_user_based,
-                        chosen_user=chosen_user
+                        chosen_user=chosen_user,
+                        rating=rating,
+                        movie=movie
                     )
 
                 status = result_user["status"]
                 debug_info = result_user.get("debug_info", {})
                 recs_df = result_user["recommendations"]
 
-                # prepare debug dataframes locally (so they're always defined)
                 cand_df = result_user.get("dbg_candidate_users_df", pd.DataFrame())
                 corr_df_dbg = result_user.get("dbg_corr_df", pd.DataFrame())
                 corr_filtered_dbg = result_user.get("dbg_corr_filtered", pd.DataFrame())
                 neigh_dbg = result_user.get("dbg_neighbor_ratings", pd.DataFrame())
 
-                # --- status check ---
                 if status != "ok":
                     st.warning(f"User-Based recommendations could not be generated. Status: {status}")
-
-                    # even if status is not ok, you can see debug to explain technically
                     with st.expander("🔎 Debug / Intermediate Steps (detailed calculation steps)"):
                         st.write("• candidate_users_df = 'Everyone who watched common films with target user'")
                         st.write("Shape:", cand_df.shape)
@@ -1138,11 +725,8 @@ with tab_tasks:
                         st.dataframe(neigh_dbg.head(20))
 
                 else:
-                    # give separate message if no recommendations
                     if recs_df.empty:
                         st.info("No recommendations found matching the parameters.")
-
-                        # even if no recommendations, we can explain 'why not' by showing debug
                         with st.expander("🔎 Debug / Intermediate Steps (detailed calculation steps)"):
                             st.write("• candidate_users_df = 'Everyone who watched common films with target user'")
                             st.write("Shape:", cand_df.shape)
@@ -1162,10 +746,7 @@ with tab_tasks:
                             st.dataframe(neigh_dbg.head(20))
 
                     else:
-                        # SUCCESS STATUS
                         st.success("User-Based recommendations ready.")
-
-                        # short explanation card
                         st.markdown(
                             """
                             <div class='metric-card'>
@@ -1182,7 +763,6 @@ with tab_tasks:
                             unsafe_allow_html=True
                         )
 
-                        # metrics (how many neighbors we used, etc.)
                         col_a, col_b, col_c, col_d = st.columns(4)
 
                         with col_a:
@@ -1213,14 +793,12 @@ with tab_tasks:
                                 help="Number of most similar neighbors used when calculating recommendation score."
                             )
 
-                        # RESULT TABLE (final recommendations)
                         st.markdown("#### 🎬 User-Based Recommendations")
                         st.dataframe(
                             recs_df.reset_index(drop=True),
                             use_container_width=True
                         )
 
-                        # DEBUG EXPANDER (presentation mode 💅)
                         with st.expander("🔎 Debug / Intermediate Steps (detailed calculation steps)"):
                             st.write("STAGE 1 · candidate_users_df")
                             st.caption(
@@ -1245,11 +823,11 @@ with tab_tasks:
                             st.write("Shape:", neigh_dbg.shape)
                             st.dataframe(neigh_dbg.head(20))
 
-
-            # ITEM-BASED
             elif rec_type.startswith("Item-Based"):
                 with st.spinner("Calculating Item-Based..."):
-                    pre_i = precompute_for_user_itembased(chosen_user)
+                    pre_i = precompute_for_user_itembased(
+                        chosen_user, all_user_ids, rating, movie, user_movie_df
+                    )
                     status_i, ref_movie, sim_df = finalize_item_based_from_cache(
                         pre_i,
                         top_n_item_based
@@ -1286,12 +864,13 @@ with tab_tasks:
                         use_container_width=True
                     )
 
-            # CONTENT-BASED
             elif rec_type.startswith("Content-Based"):
                 with st.spinner("Calculating Content-Based..."):
                     cb_result = content_based_recommender_cached(
                         movie_title=selected_movie_title,
-                        top_n=top_n_content
+                        top_n=top_n_content,
+                        movie=movie,
+                        cosine_sim_genre=cosine_sim_genre
                     )
 
                 status_c = cb_result["status"]
@@ -1335,12 +914,11 @@ with tab_tasks:
                         use_container_width=True
                     )
 
-            # HYBRID
-            else:
+            else:  # Hybrid
                 with st.spinner("Calculating Hybrid..."):
-
-                    # USER-BASED tarafı
-                    pre_u = precompute_for_user_userbased(chosen_user)
+                    pre_u = precompute_for_user_userbased(
+                        chosen_user, all_user_ids, user_movie_df, rating
+                    )
                     result_user = finalize_user_based_from_cache(
                         precomputed=pre_u,
                         min_overlap_ratio_pct=min_overlap_ratio_pct,
@@ -1348,7 +926,9 @@ with tab_tasks:
                         max_neighbors=max_neighbors,
                         weighted_score_threshold=weighted_score_threshold,
                         top_n=top_n_user_based,
-                        chosen_user=chosen_user
+                        chosen_user=chosen_user,
+                        rating=rating,
+                        movie=movie
                     )
                     if result_user["status"] == "ok" and not result_user["recommendations"].empty:
                         df_user_part = result_user["recommendations"].copy()
@@ -1360,7 +940,9 @@ with tab_tasks:
                         df_user_part = pd.DataFrame(columns=["Film_Name", "Model_Score", "Source"])
 
                     # ITEM-BASED side
-                    pre_i = precompute_for_user_itembased(chosen_user)
+                    pre_i = precompute_for_user_itembased(
+                        chosen_user, all_user_ids, rating, movie, user_movie_df
+                    )
                     status_i, ref_movie_i, sim_df_i = finalize_item_based_from_cache(
                         pre_i,
                         top_n_item_based
@@ -1374,11 +956,12 @@ with tab_tasks:
                     else:
                         df_item_part = pd.DataFrame(columns=["Film_Name", "Model_Score", "Source"])
 
-                    # CONTENT-BASED side
                     if status_i == "ok" and ref_movie_i is not None:
                         cb_result = content_based_recommender_cached(
                             movie_title=ref_movie_i,
-                            top_n=top_n_content
+                            top_n=top_n_content,
+                            movie=movie,
+                            cosine_sim_genre=cosine_sim_genre
                         )
                         if cb_result["status"] == "ok" and not cb_result["recommendations"].empty:
                             df_cb_part = cb_result["recommendations"].copy()
@@ -1433,13 +1016,8 @@ with tab_tasks:
                     ).head(hybrid_top_n)
 
                     st.success("Hybrid (Common Candidates from All Models)")
+                    st.dataframe(hybrid_summary.reset_index(drop=True), use_container_width=True)
 
-                    st.dataframe(
-                        hybrid_summary.reset_index(drop=True),
-                        use_container_width=True
-                    )
-
-                    # Show sub-sources
                     with st.expander("User-Based details"):
                         if df_user_part.empty:
                             st.write("No User-Based results.")
@@ -1461,7 +1039,6 @@ with tab_tasks:
                             st.dataframe(df_cb_part.reset_index(drop=True),
                                          use_container_width=True)
 
-                    # also write reference film
                     if status_i == "ok" and ref_movie_i is not None:
                         st.info(
                             f"Film the user last rated 5⭐: {ref_movie_i} "
@@ -1474,10 +1051,6 @@ with tab_tasks:
                             "Therefore, Content-Based signal may be missing."
                         )
 
-
-# -------------------------------------------------
-# FOOTER
-# -------------------------------------------------
 st.markdown("---")
 st.markdown(
     """
@@ -1488,3 +1061,5 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
+

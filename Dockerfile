@@ -22,7 +22,16 @@ RUN pip install --no-cache-dir --upgrade pip && \
 
 # Copy application files
 COPY app.py .
+COPY config.py .
+COPY utils.py .
+COPY logging_config.py .
+COPY error_handling.py .
+COPY security_utils.py .
+COPY performance_utils.py .
 COPY data/ ./data/
+COPY data_loader/ ./data_loader/
+COPY recommenders/ ./recommenders/
+COPY ui/ ./ui/
 
 # Expose port for Streamlit
 EXPOSE 8080

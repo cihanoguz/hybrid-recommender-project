@@ -1,5 +1,17 @@
-streamlit
-pandas
-numpy
-scikit-learn
-scipy
+streamlit==1.50.0
+pandas==2.3.3
+numpy==2.3.4
+scikit-learn==1.7.2
+scipy==1.16.2
+
+# Development tools
+black==24.10.0
+isort==5.13.2
+flake8==7.1.1
+pylint==3.3.1
+pytest==8.3.4
+pytest-cov==6.0.0
+pre-commit==4.0.1
+
+# Security tools
+pip-audit==2.7.3
