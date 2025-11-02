@@ -9,9 +9,8 @@ exclude =
     dist,
     *.egg-info
 ignore =
-    E501,  # line too long (handled by black)
-    W503,  # line break before binary operator (conflicts with black)
-    E203,  # whitespace before ':' (conflicts with black)
+    E501,
+    W503,
+    E203
 per-file-ignores =
-    __init__.py:F401  # imported but unused (for package exports)
-
+    __init__.py:F401
