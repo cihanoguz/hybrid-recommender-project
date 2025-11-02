@@ -308,7 +308,7 @@ with tab_dataset:
     total_movies_common = common_movies["movieId"].nunique()
     total_ratings_common = common_movies.shape[0]
 
-    um_users, um_movies = get_matrix_shape(user_movie_df)
+    um_users, um_movies = user_movie_df.shape
 
     c1, c2, c3 = st.columns(3)
     with c1:
