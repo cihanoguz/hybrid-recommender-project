@@ -1064,25 +1064,19 @@ with tab_tasks:
                         if df_user_part.empty:
                             st.write("No User-Based results.")
                         else:
-                            st.dataframe(
-                                df_user_part.reset_index(drop=True), width="stretch"
-                            )
+                            st.dataframe(df_user_part.reset_index(drop=True), width="stretch")
 
                     with st.expander("Item-Based details"):
                         if df_item_part.empty:
                             st.write("No Item-Based results.")
                         else:
-                            st.dataframe(
-                                df_item_part.reset_index(drop=True), width="stretch"
-                            )
+                            st.dataframe(df_item_part.reset_index(drop=True), width="stretch")
 
                     with st.expander("Content-Based details"):
                         if df_cb_part.empty:
                             st.write("No Content-Based results.")
                         else:
-                            st.dataframe(
-                                df_cb_part.reset_index(drop=True), width="stretch"
-                            )
+                            st.dataframe(df_cb_part.reset_index(drop=True), width="stretch")
 
                     if status_i == "ok" and ref_movie_i is not None:
                         st.info(
