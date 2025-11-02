@@ -222,9 +222,6 @@ if df_full is None or common_movies is None or user_movie_df is None:
     st.stop()
 
 
-def get_matrix_shape(df: pd.DataFrame) -> Tuple[int, int]:
-    """Get DataFrame shape."""
-    return df.shape
 
 
 # Tabs
