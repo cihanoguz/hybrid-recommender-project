@@ -112,3 +112,16 @@ docker compose -f docker-compose.portainer.yml up -d
 apt-get install certbot python3-certbot-nginx -y
 certbot --nginx -d yourdomain.com
 ```
+
+---
+
+## Security
+
+See [SECURITY.md](SECURITY.md) for comprehensive security guide:
+- SSH hardening
+- Fail2ban setup
+- SSL/TLS configuration
+- Firewall rules
+- Nginx security headers
+- Automatic updates
+- Log monitoring
