@@ -35,6 +35,15 @@ COPY data_loader/ ./data_loader/
 COPY recommenders/ ./recommenders/
 COPY ui/ ./ui/
 
+# Download data file during build (baked into image for faster startup)
+# This avoids runtime downloads on cold starts
+ARG DATA_URL=https://github.com/cihanoguz/hybrid-recommender-project/releases/download/v1.0.0/prepare_data_demo.pkl
+RUN echo "Downloading data file during build from $DATA_URL..." && \
+    mkdir -p /app/data && \
+    python -c "import sys; from urllib.request import urlretrieve; urlretrieve(sys.argv[1], '/app/data/prepare_data_demo.pkl')" "$DATA_URL" && \
+    ls -lh /app/data/prepare_data_demo.pkl && \
+    echo "Data file downloaded successfully during build (baked into image)"
+
 # Create startup script to handle dynamic PORT (Render.com sets PORT env var)
 RUN echo '#!/bin/sh' > /app/start.sh && \
     echo 'PORT=${PORT:-8080}' >> /app/start.sh && \

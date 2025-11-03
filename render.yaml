@@ -12,7 +12,8 @@ services:
         value: data/prepare_data_demo.pkl
       - key: DATA_URL
         sync: false
-        # Set in Render dashboard: GitHub Release URL or external storage
+        # Set in Render dashboard: GitHub Release URL (for build-time download)
+        # Example: https://github.com/cihanoguz/hybrid-recommender-project/releases/download/v1.0.0/prepare_data_demo.pkl
       - key: LOG_LEVEL
         value: INFO
       - key: PYTHONUNBUFFERED
