@@ -21,7 +21,8 @@ DEFAULT_MAX_NEIGHBORS = int(os.getenv("DEFAULT_MAX_NEIGHBORS", "7"))
 DEFAULT_WEIGHTED_SCORE_THRESHOLD = float(os.getenv("DEFAULT_WEIGHTED_SCORE_THRESHOLD", "3.5"))
 DEFAULT_TOP_N = int(os.getenv("DEFAULT_TOP_N", "5"))
 
-SERVER_PORT = int(os.getenv("SERVER_PORT", "8080"))
+# Render.com sets PORT env var, fallback to SERVER_PORT or 8080
+SERVER_PORT = int(os.getenv("PORT", os.getenv("SERVER_PORT", "8080")))
 SERVER_ADDRESS = os.getenv("SERVER_ADDRESS", "0.0.0.0")
 
 MIN_USER_ID = 1

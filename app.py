@@ -19,6 +19,19 @@ except ImportError:
     ValidationError = Exception
 
 from data_loader import load_data
+
+# Download data file if it doesn't exist (for cloud deployments)
+if not config.PICKLE_PATH.exists():
+    try:
+        from download_data import download_data_if_needed
+
+        logger.info("Data file not found, attempting to download...")
+        if download_data_if_needed():
+            logger.info("Data file downloaded successfully")
+        else:
+            logger.warning("Failed to download data file")
+    except ImportError:
+        logger.warning("download_data.py not available, skipping auto-download")
 from recommenders import (
     content_based_recommender_cached,
     finalize_item_based_from_cache,

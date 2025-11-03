@@ -28,23 +28,31 @@ COPY logging_config.py .
 COPY error_handling.py .
 COPY security_utils.py .
 COPY performance_utils.py .
+COPY download_data.py .
+COPY .streamlit/ ./.streamlit/
 COPY data/ ./data/
 COPY data_loader/ ./data_loader/
 COPY recommenders/ ./recommenders/
 COPY ui/ ./ui/
 
-# Expose port for Streamlit
+# Create startup script to handle dynamic PORT (Render.com sets PORT env var)
+RUN echo '#!/bin/sh' > /app/start.sh && \
+    echo 'PORT=${PORT:-8080}' >> /app/start.sh && \
+    echo 'exec streamlit run app.py \' >> /app/start.sh && \
+    echo '    --server.port=$PORT \' >> /app/start.sh && \
+    echo '    --server.address=0.0.0.0 \' >> /app/start.sh && \
+    echo '    --server.headless=true \' >> /app/start.sh && \
+    echo '    --server.enableCORS=false \' >> /app/start.sh && \
+    echo '    --server.enableXsrfProtection=false' >> /app/start.sh && \
+    chmod +x /app/start.sh
+
+# Expose port (default 8080, Render sets PORT dynamically)
 EXPOSE 8080
 
-# Health check (optional - port check)
-HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD python -c "import socket; s=socket.socket(); s.connect(('localhost', 8080)); s.close()" || exit 1
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD python -c "import socket, os; s=socket.socket(); port=int(os.getenv('PORT', 8080)); s.connect(('localhost', port)); s.close()" || exit 1
 
 # Start Streamlit application
-CMD ["streamlit", "run", "app.py", \
-     "--server.port=8080", \
-     "--server.address=0.0.0.0", \
-     "--server.headless=true", \
-     "--server.enableCORS=false", \
-     "--server.enableXsrfProtection=false"]
+CMD ["/app/start.sh"]
 

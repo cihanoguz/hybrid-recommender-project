@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: hybrid-recommender
+    runtime: docker
+    plan: starter
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    region: frankfurt
+    healthCheckPath: /
+    envVars:
+      - key: PICKLE_PATH
+        value: data/prepare_data_demo.pkl
+      - key: DATA_URL
+        sync: false
+        # Set in Render dashboard: GitHub Release URL or external storage
+      - key: LOG_LEVEL
+        value: INFO
+      - key: PYTHONUNBUFFERED
+        value: "1"
+      - key: SERVER_ADDRESS
+        value: "0.0.0.0"
+
