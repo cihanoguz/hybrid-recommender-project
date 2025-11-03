@@ -1,62 +1,38 @@
-## Deployment Guide
+# Deployment
 
-### Hetzner Cloud (Recommended)
+## Hetzner Cloud
 
-**Server specs:**
-- OS: Debian 13
-- RAM: 8GB (2GB minimum)
-- Storage: 80GB SSD
-- Primary IP: Optional (for static IP/domain)
+**Requirements:** Debian 13, 8GB RAM, 80GB SSD
 
-**Quick deploy:**
+**Deploy:**
 ```bash
-# Update system
+# System setup
 apt-get update && apt-get upgrade -y
+curl -fsSL https://get.docker.com -o get-docker.sh && sh get-docker.sh
+systemctl start docker && systemctl enable docker
+apt-get install docker-compose-plugin git -y
 
-# Install Docker (official)
-curl -fsSL https://get.docker.com -o get-docker.sh
-sh get-docker.sh
-systemctl start docker
-systemctl enable docker
-
-# Install docker-compose plugin
-apt-get install docker-compose-plugin -y
-
-# Clone and deploy
-apt-get install git -y
+# Clone & run
 git clone https://github.com/cihanoguz/hybrid-recommender-project.git
 cd hybrid-recommender-project
 docker compose up -d --build
 
-# Check logs
-docker compose logs -f
-
 # Verify
 docker ps
+docker compose logs -f
 ```
 
-**Access:**
-- App: `http://YOUR_SERVER_IP:8080` (direct)
-- App: `http://YOUR_SERVER_IP` (port 80, requires nginx - see below)
-
-**Port 80 access (nginx reverse proxy):**
+**Nginx (port 80):**
 ```bash
-# Install nginx
 apt-get install nginx -y
-
-# Copy config
 cp nginx.conf /etc/nginx/sites-available/hybrid-recommender
 ln -s /etc/nginx/sites-available/hybrid-recommender /etc/nginx/sites-enabled/
-rm /etc/nginx/sites-enabled/default
-
-# Test and reload
-nginx -t
-systemctl reload nginx
+rm -f /etc/nginx/sites-enabled/default
+nginx -t && systemctl reload nginx
 
 # Firewall
-ufw allow 80/tcp
-ufw allow 443/tcp
-ufw allow 8080/tcp
+apt-get install ufw -y
+ufw allow 80/tcp 443/tcp 8080/tcp 22/tcp
 ufw enable
 ```
 
@@ -67,57 +43,29 @@ git pull
 docker compose up -d --build
 ```
 
-**Notes:**
-- Data (643MB) baked into image during build (no runtime download)
-- Build time: ~5-10 min (first time)
-- Memory: ~1.3-1.6GB peak usage
-- Auto-restart on reboot: `restart: unless-stopped` in docker-compose.yml
+**Access:**
+- `http://YOUR_IP:8080` (direct)
+- `http://YOUR_IP` (via nginx)
 
 ---
 
-### Render.com (Alternative)
+## Render.com
 
 **Setup:**
 - Runtime: Docker
-- Plan: Starter ($7/month) - 2GB RAM required
-- Free tier (512MB) insufficient
-
-**Config:**
-- Dockerfile auto-detected
+- Plan: Starter (2GB RAM) - Free tier insufficient
 - Port: Auto (uses `$PORT`)
-- Data: Build-time download (baked into image)
 
-**Env vars (optional):**
+**Env vars:**
 - `PICKLE_PATH`: `data/prepare_data_demo.pkl`
-- `LOG_LEVEL`: `ERROR` (saves memory)
+- `LOG_LEVEL`: `ERROR`
 - `PYTHONUNBUFFERED`: `1`
 
-**Memory issue:**
-If "exceeded memory limit" → upgrade to Starter plan (2GB). Free tier too small for 643MB data + app overhead.
+**Note:** Data (643MB) baked into image during build.
 
 ---
 
-### Troubleshooting
-
-**Docker not found:**
-```bash
-# Use official install script
-curl -fsSL https://get.docker.com -o get-docker.sh
-sh get-docker.sh
-systemctl start docker
-```
-
-**Port conflict:**
-```bash
-lsof -i :8080
-# Change port in docker-compose.yml or kill process
-```
-
-**Container won't start:**
-```bash
-docker compose logs hybrid-recommender
-docker ps -a
-```
+## Troubleshooting
 
 **Rebuild:**
 ```bash
@@ -126,43 +74,41 @@ docker compose build --no-cache
 docker compose up -d
 ```
 
+**Check logs:**
+```bash
+docker compose logs -f hybrid-recommender
+docker ps -a
+```
+
+**Port conflict:**
+```bash
+lsof -i :8080
+```
+
 ---
 
-### CI/CD & Container Management
+## Optional
 
-**Portainer (Docker UI):**
+**Portainer (Docker UI - secured):**
 ```bash
-# Start Portainer
+# 1. Get your IP
+curl ifconfig.me
+
+# 2. Update nginx.conf: Replace YOUR_IP_HERE with your IP
+# 3. Reload nginx
+nginx -t && systemctl reload nginx
+
+# 4. Start Portainer (only accessible via nginx /portainer/)
 docker compose -f docker-compose.portainer.yml up -d
 
-# Access: http://YOUR_SERVER_IP:9000
-# First login: create admin user
-# Manage containers, images, logs via web UI
+# Access: http://YOUR_IP/portainer/
 ```
 
-**CI/CD with GitHub Actions:**
-- Auto-build Docker image on push
-- Push to GitHub Container Registry (optional)
-- Deploy to Hetzner via SSH (optional)
-
-**Manual deploy workflow:**
+**Domain + SSL:**
 ```bash
-# On server
-cd hybrid-recommender-project
-git pull
-docker compose up -d --build
-docker compose logs -f
+# 1. Point A record to server IP
+# 2. Update nginx.conf: server_name yourdomain.com;
+# 3. Install certbot
+apt-get install certbot python3-certbot-nginx -y
+certbot --nginx -d yourdomain.com
 ```
-
-**Portainer auto-update (optional):**
-- Use watchtower or Portainer stacks
-- Configure webhook for auto-deploy
-
----
-
-### Domain Setup
-
-1. Point A record to Primary IP (Hetzner)
-2. Update nginx config: `server_name yourdomain.com;`
-3. SSL: `certbot --nginx -d yourdomain.com`
-4. Auto-renew: `certbot renew --dry-run`
