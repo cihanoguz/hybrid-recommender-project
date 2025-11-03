@@ -2,8 +2,8 @@
 
 import os
 from pathlib import Path
-from urllib.request import Request, urlopen
 from urllib.error import URLError
+from urllib.request import Request, urlopen
 
 from logging_config import get_logger
 
@@ -62,4 +62,3 @@ def download_data_if_needed() -> bool:
 
 if __name__ == "__main__":
     download_data_if_needed()
-

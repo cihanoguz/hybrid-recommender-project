@@ -34,11 +34,11 @@ jobs:
     
     - name: Check code formatting with black
       run: |
-        black --check .
+        black --check --extend-exclude '\.md$' .
     
     - name: Check import sorting with isort
       run: |
-        isort --check-only .
+        isort --check-only --skip-glob '*.md' .
     
     - name: Lint with flake8
       run: |
