@@ -8,7 +8,7 @@ services:
     platform: linux/amd64
     container_name: hybrid-recommender
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"  # Only accessible from localhost (nginx proxy)
     restart: unless-stopped
     environment:
       - PYTHONUNBUFFERED=1
