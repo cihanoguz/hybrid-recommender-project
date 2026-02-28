@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [ main, master, develop ]
 
+permissions:
+  contents: read
+  packages: write
+
 jobs:
   lint-and-format:
     name: Lint and Format Check
@@ -97,7 +101,7 @@ jobs:
         fail_ci_if_error: false
 
   docker-build:
-    name: Docker Build Test
+    name: Docker Build Test (PR/Push)
     runs-on: ubuntu-latest
     
     steps:
@@ -112,6 +116,45 @@ jobs:
         context: .
         push: false
         tags: hybrid-recommender:test
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+  docker-publish-ghcr:
+    name: Publish Docker Image (GHCR)
+    runs-on: ubuntu-latest
+    needs: [lint-and-format, test, docker-build]
+    if: github.event_name == 'push'
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Log in to GHCR
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Extract Docker metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ghcr.io/${{ github.repository }}
+        tags: |
+          type=raw,value=latest,enable={{is_default_branch}}
+          type=ref,event=branch
+          type=sha,prefix=sha-
+
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
         cache-from: type=gha
         cache-to: type=gha,mode=max
 

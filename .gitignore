@@ -20,6 +20,7 @@ ENV/
 # IDE
 .vscode/
 .idea/
+.idea_backup_*/
 *.swp
 *.swo
 *~

@@ -844,7 +844,7 @@ with tab_tasks:
                             )
 
                         st.markdown("#### 🎬 User-Based Recommendations")
-                        st.dataframe(recs_df.reset_index(drop=True), width="stretch")
+                        st.dataframe(recs_df.reset_index(drop=True), use_container_width=True)
 
                         with st.expander(
                             "🔎 Debug / Intermediate Steps (detailed calculation steps)"
@@ -916,7 +916,7 @@ with tab_tasks:
                     st.markdown(f"Total {len(sim_df)} similar films found.")
                     st.dataframe(
                         sim_df.head(top_n_item_based).reset_index(drop=True),
-                        width="stretch",
+                        use_container_width=True,
                     )
 
             elif rec_type.startswith("Content-Based"):
@@ -966,7 +966,7 @@ with tab_tasks:
                     st.markdown(f"Total {len(rec_df_cb)} similar films found.")
                     st.dataframe(
                         rec_df_cb.head(top_n_content).reset_index(drop=True),
-                        width="stretch",
+                        use_container_width=True,
                     )
 
             else:  # Hybrid
@@ -1071,25 +1071,25 @@ with tab_tasks:
                     ).head(hybrid_top_n)
 
                     st.success("Hybrid (Common Candidates from All Models)")
-                    st.dataframe(hybrid_summary.reset_index(drop=True), width="stretch")
+                    st.dataframe(hybrid_summary.reset_index(drop=True), use_container_width=True)
 
                     with st.expander("User-Based details"):
                         if df_user_part.empty:
                             st.write("No User-Based results.")
                         else:
-                            st.dataframe(df_user_part.reset_index(drop=True), width="stretch")
+                            st.dataframe(df_user_part.reset_index(drop=True), use_container_width=True)
 
                     with st.expander("Item-Based details"):
                         if df_item_part.empty:
                             st.write("No Item-Based results.")
                         else:
-                            st.dataframe(df_item_part.reset_index(drop=True), width="stretch")
+                            st.dataframe(df_item_part.reset_index(drop=True), use_container_width=True)
 
                     with st.expander("Content-Based details"):
                         if df_cb_part.empty:
                             st.write("No Content-Based results.")
                         else:
-                            st.dataframe(df_cb_part.reset_index(drop=True), width="stretch")
+                            st.dataframe(df_cb_part.reset_index(drop=True), use_container_width=True)
 
                     if status_i == "ok" and ref_movie_i is not None:
                         st.info(
